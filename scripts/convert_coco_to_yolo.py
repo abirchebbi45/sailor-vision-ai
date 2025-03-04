@@ -1,5 +1,6 @@
 import json
 import os
+from utils.log_utils import log_event
 
 # Mapping des catégories COCO vers les indices YOLO (qui commencent à 0)
 coco_to_yolo = {
@@ -44,9 +45,12 @@ def convert_coco_to_yolo(coco_json_path, images_folder, output_folder):
         width /= image_width
         height /= image_height
 
-        with open(label_path, 'a') as label_file:
-            label_file.write(f"{category_id} {x_center} {y_center} {width} {height}\n")
+        if category_id in coco_to_yolo:
+            yolo_category_id = coco_to_yolo[category_id]
+            label_file.write(f"{yolo_category_id} {x_center} {y_center} {width} {height}\n")
 
         nb_fichiers_convertis += 1
-
+        
+    
+    log_event(f"Conversion terminée : {nb_fichiers_convertis} annotations traitées.")
     print(f"Conversion terminée : {nb_fichiers_convertis} annotations traitées.")

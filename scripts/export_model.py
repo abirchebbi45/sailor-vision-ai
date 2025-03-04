@@ -1,34 +1,49 @@
-import shutil
+from ultralytics import YOLO
+import cv2
 import os
+from utils.log_utils import log_event
 
-def export_best_model(training_folder, output_folder):
-    """
-    Exporte le meilleur modèle YOLOv8 (best.pt) d'un dossier de formation vers un dossier de destination.
+def track_objects(video_path, model_path, output_path):
+    if not os.path.exists(model_path):
+        log_event(f"Modèle introuvable : {model_path}")
+        raise FileNotFoundError(f"Le modèle {model_path} est introuvable.")
 
-    :param training_folder: Dossier de l'entraînement (ex: outputs/yolo_training).
-    :param output_folder: Dossier où exporter le modèle.
-    :return: True si export réussi, False sinon.
-    """
-    os.makedirs(output_folder, exist_ok=True)
+    if not os.path.exists(video_path):
+        log_event(f"Vidéo introuvable : {video_path}")
+        raise FileNotFoundError(f"La vidéo {video_path} est introuvable.")
 
-    weights_folder = os.path.join(training_folder, 'weights')
-    best_model = os.path.join(weights_folder, 'best.pt')
+    log_event(f"Début du tracking pour la vidéo : {video_path} avec le modèle : {model_path}")
 
-    if not os.path.exists(training_folder):
-        print(f"Le dossier d'entraînement '{training_folder}' n'existe pas.")
-        return False
+    model = YOLO(model_path)
+    cap = cv2.VideoCapture(video_path)
 
-    if not os.path.exists(weights_folder):
-        print(f"Le dossier 'weights' est introuvable dans '{training_folder}'.")
-        return False
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+    out = cv2.VideoWriter(output_path, fourcc, fps, frame_size)
 
-    if os.path.exists(best_model):
-        shutil.copy(best_model, os.path.join(output_folder, 'yolov8_best.pt'))
-        print(f"Modèle exporté dans {output_folder}/yolov8_best.pt")
-        return True
-    else:
-        print("Aucun fichier 'best.pt' trouvé dans le dossier 'weights'.")
-        return False
+    try:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-# Exemple d'appel
-export_best_model('outputs/yolo_training', 'models')
+            results = model.track(frame, persist=True)
+
+            if results[0].boxes:
+                for box in results[0].boxes:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+                    if box.id is not None:
+                        cv2.putText(frame, f"ID: {int(box.id)}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+            out.write(frame)
+
+        log_event(f"Tracking terminé. Vidéo sauvegardée : {output_path}")
+    except Exception as e:
+        log_event(f"Erreur lors du tracking : {e}")
+    finally:
+        cap.release()
+        out.release()
+        cv2.destroyAllWindows()
