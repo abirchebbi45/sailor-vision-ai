@@ -1,1 +1,6 @@
-*.pyc
+data/images/
+data/labels/
+outputs/
+models/
+__pycache__/
+*.log
