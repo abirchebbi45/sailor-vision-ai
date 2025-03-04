@@ -9,30 +9,44 @@ coco_to_yolo = {
     6: 3    # life jacket
 }
 
-def convert_coco_to_yolo(coco_file, output_dir):
-    with open(coco_file) as f:
-        data = json.load(f)
+def convert_coco_to_yolo(coco_json_path, images_folder, output_folder):
+    os.makedirs(output_folder, exist_ok=True)
 
-    os.makedirs(output_dir, exist_ok=True)
+    with open(coco_json_path, 'r', encoding='utf-8') as file:
+        coco_data = json.load(file)
 
-    images = {img['id']: img for img in data['images']}
+    images = {image['id']: image['file_name'] for image in coco_data['images']}
+    categories = {category['id']: category['name'] for category in coco_data['categories']}
+    nb_fichiers_convertis = 0
 
-    for ann in data['annotations']:
-        img = images[ann['image_id']]
-        filename = img['file_name'].replace('.jpg', '.txt')
-        output_file = os.path.join(output_dir, filename)
+    for annotation in coco_data['annotations']:
+        image_id = annotation['image_id']
+        category_id = annotation['category_id']
 
-        yolo_class_id = coco_to_yolo[ann['category_id']]
+        image_file = images.get(image_id)
+        if not image_file:
+            continue
 
-        # Normalisation des coordonnées bbox
-        bbox = ann['bbox']
-        x_center = (bbox[0] + bbox[2] / 2) / img['width']
-        y_center = (bbox[1] + bbox[3] / 2) / img['height']
-        width = bbox[2] / img['width']
-        height = bbox[3] / img['height']
+        image_path = os.path.join(images_folder, image_file)
+        if not os.path.exists(image_path):
+            print(f"Image manquante : {image_path}")
+            continue
 
-        with open(output_file, 'a') as f:
-            f.write(f"{yolo_class_id} {x_center} {y_center} {width} {height}\n")
+        label_file = os.path.splitext(image_file)[0] + ".txt"
+        label_path = os.path.join(output_folder, label_file)
 
-# Exécution
-convert_coco_to_yolo('data/annotations.json', 'data/labels')
+        image_width = coco_data['images'][image_id-1]['width']
+        image_height = coco_data['images'][image_id-1]['height']
+
+        x, y, width, height = annotation['bbox']
+        x_center = (x + width / 2) / image_width
+        y_center = (y + height / 2) / image_height
+        width /= image_width
+        height /= image_height
+
+        with open(label_path, 'a') as label_file:
+            label_file.write(f"{category_id} {x_center} {y_center} {width} {height}\n")
+
+        nb_fichiers_convertis += 1
+
+    print(f"Conversion terminée : {nb_fichiers_convertis} annotations traitées.")
