@@ -18,7 +18,7 @@ paths:
 
 yolo:
   pretrained_model: "yolov8n.pt"                 # Modèle YOLOv8 de base.
-  epochs: 50
+  epochs: 20
   batch_size: 16
   img_size: 640
 
