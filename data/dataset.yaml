@@ -2,6 +2,11 @@ train: ../data/images/train  # Chemin vers les images d'entraînement.
 val: ../data/images/val      # Chemin vers les images de validation.
 test: ../data/images/test    # Chemin vers les images de test.
 
+# Chemins vers les labels YOLO
+train_labels: ../data/yolo_labels/train  # Chemin vers les labels d'entraînement.
+val_labels: ../data/yolo_labels/val      # Chemin vers les labels de validation.
+test_labels: ../data/yolo_labels/test    # Chemin vers les labels de test.
+
 # Nombre total de classes (4)
 nc: 4
 

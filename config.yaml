@@ -29,3 +29,10 @@ tracking:
 visualization:
   output_dir: "outputs/visualizations/"          # Dossier pour les visualisations d'annotations.
 
+evaluation:
+  val_images_folder: "data/images/val"
+  val_labels_folder: "data/yolo_labels/val"
+  best_model_path: "outputs/exports/yolov8_best.pt"
+  metrics_output_file: "outputs/evaluation/metrics.json"
+  confidence_threshold: 0.5
+  iou_threshold: 0.5                            # Seuil IoU pour la suppression non maximale (NMS).

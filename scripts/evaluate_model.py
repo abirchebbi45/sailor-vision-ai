@@ -3,11 +3,12 @@ import json
 from ultralytics import YOLO
 from utils.log_utils import log_event
 
-def evaluate_model(labels_folder, model_path, metrics_output_file, confidence_threshold=0.5, iou_threshold=0.5):
+def evaluate_model(images_folder, labels_folder, model_path, metrics_output_file, confidence_threshold=0.5, iou_threshold=0.5):
     """
     Evaluate the YOLO model on a validation set and save the metrics.
     
     Args:
+        images_folder (str): Path to the folder containing the validation images.
         labels_folder (str): Path to the folder containing the validation labels.
         model_path (str): Path to the trained YOLO model.
         metrics_output_file (str): Path to the output file to save the metrics.

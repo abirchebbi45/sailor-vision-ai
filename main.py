@@ -28,15 +28,16 @@ def main():
     visualize_annotations("train")
     visualize_annotations("val")
 
+    
     # Évaluation du modèle
     evaluate_model(
-        images_folder=config['evaluation']['val_images_folder'],
-        labels_folder=config['evaluation']['val_labels_folder'],
-        model_path=config['evaluation']['best_model_path'],
-        metrics_output_file=config['evaluation']['metrics_output_file'],
-        confidence_threshold=config['evaluation']['confidence_threshold'],
-        iou_threshold=config['evaluation']['iou_threshold']
-    )
+    images_folder=config['evaluation']['val_images_folder'],
+    labels_folder=config['evaluation']['val_labels_folder'],
+    model_path=config['evaluation']['best_model_path'],
+    metrics_output_file=config['evaluation']['metrics_output_file'],
+    confidence_threshold=config['evaluation']['confidence_threshold'],
+    iou_threshold=config['evaluation']['iou_threshold']
+)
 
     # Tracking des objets dans une vidéo
     track_objects()
