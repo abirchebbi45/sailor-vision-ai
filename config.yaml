@@ -1,0 +1,28 @@
+# config.yaml
+
+paths:
+  images_dir: "data/images"                    # Si tes images sont dans ce dossier, sinon à adapter.
+  annotations_dir: "data/annotations"          # Emplacement du dossier contenant les annotations.
+  train_annotations_file: "data/annotations/instances_train_objects_in_water.json"
+  val_annotations_file: "data/annotations/instances_val_objects_in_water.json"
+  test_annotations_file: "data/annotations/instances_test_objects_in_water.json"
+
+  yolo_dataset_dir: "data/yolo"                 # Dossier où tu vas convertir les annotations pour YOLO.
+  trained_model_dir: "models/"                   # Où sauvegarder les modèles entraînés.
+  export_model_dir: "outputs/exports/"           # Où sauvegarder les modèles exportés.
+  output_videos_dir: "outputs/videos/"           # Vidéos de suivi (tracking).
+  log_file: "log.txt"                            # Fichier log à la racine.
+
+yolo:
+  pretrained_model: "yolov8n.pt"                 # Modèle YOLOv8 de base.
+  epochs: 50
+  batch_size: 16
+  img_size: 640
+
+tracking:
+  input_video: "assets/input_video.mp4"          # Déplace la vidéo d'entrée dans `assets`, plus logique.
+  output_video: "outputs/videos/tracked_video.mp4" # Vidéo de sortie.
+
+visualization:
+  output_dir: "outputs/visualizations/"          # Dossier pour les visualisations d'annotations.
+
