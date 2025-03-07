@@ -5,6 +5,15 @@ from utils.log_utils import log_event
 coco_to_yolo = {1: 0, 2: 1, 3: 2, 6: 3}
 
 def convert_coco_to_yolo(split):
+    """
+    Convert COCO annotations to YOLO format.
+
+    Args:
+        split (str): The dataset split to convert (e.g., 'train', 'val', 'test').
+
+    Returns:
+        None
+    """
     project_root = os.path.dirname(os.path.dirname(__file__))
     annotations_path = os.path.join(project_root, "data", "annotations", f"instances_{split}_objects_in_water.json")
     images_folder = os.path.join(project_root, "data", "images", split)

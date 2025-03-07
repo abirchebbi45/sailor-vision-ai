@@ -6,6 +6,15 @@ from utils.log_utils import log_event
 COLORS = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255), 3: (255, 255, 0)}
 
 def visualize_annotations(split):
+    """
+    Visualize annotations for a given dataset split.
+
+    Args:
+        split (str): The dataset split to visualize (e.g., 'train', 'val', 'test').
+
+    Returns:
+        None
+    """
     project_root = os.path.dirname(os.path.dirname(__file__))
     annotations_path = os.path.join(project_root, "data", "annotations", f"instances_{split}_objects_in_water.json")
     images_folder = os.path.join(project_root, "data", "images", split)

@@ -3,6 +3,10 @@ import shutil
 from utils.log_utils import log_event
 
 def export_best_model():
+    """
+    Exports the best model from the training folder to the output folder.
+    Copies the 'best.pt' file from 'train_yolo/weights' to 'exports' and logs the event.
+    """
     project_root = os.path.dirname(os.path.dirname(__file__))
     training_folder = os.path.join(project_root, "outputs", "train", "train_yolo")
     output_folder = os.path.join(project_root, "outputs", "exports")

@@ -1,5 +1,6 @@
-train: ../data/images/train
-val: ../data/images/val
+train: ../data/images/train  # Chemin vers les images d'entraînement.
+val: ../data/images/val      # Chemin vers les images de validation.
+test: ../data/images/test    # Chemin vers les images de test.
 
 # Nombre total de classes (4)
 nc: 4
