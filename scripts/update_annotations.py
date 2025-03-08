@@ -1,6 +1,7 @@
 import json
 import yaml
 import os
+from utils.log_utils import log_event  # Importer la fonction de journalisation
 
 # 🔹 Charger la configuration depuis config.yaml
 config_path = "config.yaml"  # Chemin du fichier de configuration
@@ -15,17 +16,18 @@ annotations_files = {
     "test": config["paths"]["test_annotations_file"],
 }
 
+
 # 🔹 Fonction pour modifier les fichiers JSON
 def update_annotations(file_path):
     if not os.path.exists(file_path):
-        print(f"Fichier introuvable : {file_path}")
+        log_event(f"Fichier introuvable : {file_path}")  # Journaliser l'erreur
         return
 
     with open(file_path, "r", encoding="utf-8") as file:
         coco_data = json.load(file)
 
     if "images" not in coco_data:
-        print(f"Clé 'images' non trouvée dans {file_path}")
+        log_event(f"Clé 'images' non trouvée dans {file_path}")  # Journaliser l'erreur
         return
 
     # Modifier les noms de fichiers d'images (.png → .jpg)
@@ -38,11 +40,16 @@ def update_annotations(file_path):
     with open(new_file_path, "w", encoding="utf-8") as file:
         json.dump(coco_data, file, indent=4)
 
-    print(f"Fichier mis à jour : {new_file_path}")
+    log_event(f"Fichier mis à jour : {new_file_path}")  # Journaliser la réussite
+
 
 # Appliquer la mise à jour aux fichiers train, val et test
 for key, path in annotations_files.items():
-    print(f"Mise à jour du fichier d'annotations {key}...")
+    log_event(
+        f"Mise à jour du fichier d'annotations {key}..."
+    )  # Journaliser le début de la tâche
     update_annotations(path)
 
-print("Tous les fichiers d'annotations ont été mis à jour !")
+log_event(
+    "Tous les fichiers d'annotations ont été mis à jour !"
+)  # Journaliser la fin du processus

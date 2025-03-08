@@ -1,27 +1,55 @@
+import json
+import yaml
 import os
-from datetime import datetime
+from utils.log_utils import log_event  # Importer la fonction de journalisation
+
+# 🔹 Charger la configuration depuis config.yaml
+config_path = "config.yaml"  # Chemin du fichier de configuration
+
+with open(config_path, "r", encoding="utf-8") as config_file:
+    config = yaml.safe_load(config_file)
+
+# 🔹 Récupérer les fichiers d'annotations depuis la configuration
+annotations_files = {
+    "train": config["paths"]["train_annotations_file"],
+    "val": config["paths"]["val_annotations_file"],
+    "test": config["paths"]["test_annotations_file"],
+}
 
 
-def log_event(event_message):
-    """
-    Enregistre un événement dans le fichier log.txt à la racine du projet et l'affiche dans la console.
+# 🔹 Fonction pour modifier les fichiers JSON
+def update_annotations(file_path):
+    if not os.path.exists(file_path):
+        log_event(f"Fichier introuvable : {file_path}")  # Journaliser l'erreur
+        return
 
-    Args:
-        event_message (str): Le message à enregistrer et à afficher.
-    """
-    log_file_path = os.path.join(os.path.dirname(__file__), "..", "log.txt")
+    with open(file_path, "r", encoding="utf-8") as file:
+        coco_data = json.load(file)
 
-    # S'assure que le dossier parent existe
-    if not os.path.exists(os.path.dirname(log_file_path)):
-        os.makedirs(os.path.dirname(log_file_path))
+    if "images" not in coco_data:
+        log_event(f"Clé 'images' non trouvée dans {file_path}")  # Journaliser l'erreur
+        return
 
-    # Enregistre le message avec horodatage
-    timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
-    log_message = f"{timestamp} {event_message}"
+    # Modifier les noms de fichiers d'images (.png → .jpg)
+    for img in coco_data["images"]:
+        if "file_name" in img and img["file_name"].endswith(".png"):
+            img["file_name"] = img["file_name"].replace(".png", ".jpg")
 
-    # Écrire dans le fichier log.txt
-    with open(log_file_path, "a", encoding="utf-8") as log_file:
-        log_file.write(log_message + "\n")
+    # 🔹 Enregistrer un nouveau fichier sans écraser l'original
+    new_file_path = file_path.replace(".json", "_updated.json")
+    with open(new_file_path, "w", encoding="utf-8") as file:
+        json.dump(coco_data, file, indent=4)
 
-    # Afficher le message dans la console
-    print(log_message)
+    log_event(f"Fichier mis à jour : {new_file_path}")  # Journaliser la réussite
+
+
+# Appliquer la mise à jour aux fichiers train, val et test
+for key, path in annotations_files.items():
+    log_event(
+        f"Mise à jour du fichier d'annotations {key}..."
+    )  # Journaliser le début de la tâche
+    update_annotations(path)
+
+log_event(
+    "Tous les fichiers d'annotations ont été mis à jour !"
+)  # Journaliser la fin du processus
