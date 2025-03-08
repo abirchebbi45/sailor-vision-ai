@@ -1,11 +1,11 @@
 # config.yaml
 
 paths:
-  images_dir: "data\\images"                    # If your images are in this folder, otherwise adjust accordingly.
-  annotations_dir: "data\\annotations"          # Directory containing the annotations.
-  train_images_dir: "data\\images\\train"        # Dossier des images d'entraînement.
-  val_images_dir: "data\\images\\val"            # Dossier des images de validation.
-  test_images_dir: "data\\images\\test" 
+  images_dir: "data/images"                    # If your images are in this folder, otherwise adjust accordingly.
+  annotations_dir: "data/annotations"          # Directory containing the annotations.
+  train_images_dir: "data/images/train"        # Dossier des images d'entraînement.
+  val_images_dir: "data/images/val"            # Dossier des images de validation.
+  test_images_dir: "data/images/test" 
   train_annotations_file: "data/annotations/instances_train_objects_in_water.json"
   val_annotations_file: "data/annotations/instances_val_objects_in_water.json"
   test_annotations_file: "data/annotations/instances_test_objects_in_water.json"
