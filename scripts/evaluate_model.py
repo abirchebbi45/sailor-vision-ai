@@ -20,7 +20,7 @@ def evaluate_model(images_folder, labels_folder, model_path, metrics_output_file
     
     # Évaluer le modèle
     results = model.val(
-        data=os.path.join(labels_folder, "dataset.yaml"),  # Chemin vers le fichier YAML du dataset
+        data=os.path.join(labels_folder, "config.yaml"),  # Chemin vers le fichier YAML du dataset
         split="val",  # Utiliser l'ensemble de validation
         conf=confidence_threshold,
         iou=iou_threshold,
