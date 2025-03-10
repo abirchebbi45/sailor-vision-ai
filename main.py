@@ -14,9 +14,9 @@ def main():
     log_event("Lancement du pipeline complet.")
 
     # Conversion des annotations COCO vers YOLO
-    convert_coco_to_yolo("train")
-    convert_coco_to_yolo("val")
-    convert_coco_to_yolo("test")
+    #convert_coco_to_yolo("train")
+    #convert_coco_to_yolo("val")
+    #convert_coco_to_yolo("test")
 
     # Entraînement du modèle YOLO
     train_yolo()
@@ -40,7 +40,7 @@ def main():
 )
 
     # Tracking des objets dans une vidéo
-    track_objects()
+    #track_objects()
 
     log_event("Pipeline complet terminé.")
 
