@@ -11067,3 +11067,13 @@
 [2025-03-08 15:26:44] Mise à jour du fichier d'annotations test...
 [2025-03-08 15:26:45] Fichier mis à jour : D:\projects\sailor-vision-ai\data/annotations/instances_test_objects_in_water_updated.json
 [2025-03-08 15:26:45] Tous les fichiers d'annotations ont été mis à jour !
+[2025-03-08 15:38:11] Lancement du pipeline complet.
+[2025-03-08 15:40:30] Conversion train terminée : 160470 annotations converties.
+[2025-03-08 15:41:12] Conversion val terminée : 47678 annotations converties.
+[2025-03-08 15:41:13] Erreur : Aucune annotation trouvée dans D:\projects\sailor-vision-ai\data\annotations\instances_test_objects_in_water_updated.json
+[2025-03-08 22:16:48] Lancement du pipeline complet.
+[2025-03-08 22:27:06] Lancement du pipeline complet.
+[2025-03-09 23:11:53] Lancement du pipeline complet.
+[2025-03-09 23:11:53] Début de l'entraînement YOLO...
+[2025-03-10 00:05:23] Lancement du pipeline complet.
+[2025-03-10 00:05:23] Début de l'entraînement YOLO...
