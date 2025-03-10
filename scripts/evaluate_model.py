@@ -35,10 +35,10 @@ def evaluate_model(images_folder, labels_folder, model_path, metrics_output_file
     print("results.results_dict: ", results.results_dict)
     # Enregistrer les métriques dans un fichier
     metrics = {
-        "precision": results.results_dict["metrics/precision"],
-        "recall": results.results_dict["metrics/recall"],
-        "mAP50": results.results_dict["metrics/mAP50"],
-        "mAP50-95": results.results_dict["metrics/mAP50-95"]
+        "precision": results.results_dict["metrics/precision(B)"],
+        "recall": results.results_dict["metrics/recall(B)"],
+        "mAP50": results.results_dict["metrics/mAP50(B)"],
+        "mAP50-95": results.results_dict["metrics/mAP50-95(B)"]
     }
     
     with open(metrics_output_file, "w") as f:
