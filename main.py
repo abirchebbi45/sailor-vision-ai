@@ -19,14 +19,14 @@ def main():
     #convert_coco_to_yolo("test")
 
     # Entraînement du modèle YOLO
-    train_yolo()
+    #train_yolo()
 
     # Exportation du meilleur modèle
-    export_best_model()
+    #export_best_model()
 
     # Visualisation des annotations
-    visualize_annotations("train")
-    visualize_annotations("val")
+    #visualize_annotations("train")
+    #visualize_annotations("val")
 
     
     # Évaluation du modèle
