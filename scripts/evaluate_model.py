@@ -15,12 +15,16 @@ def evaluate_model(images_folder, labels_folder, model_path, metrics_output_file
         confidence_threshold (float): Confidence threshold for detections.
         iou_threshold (float): IoU threshold for non-maximal suppression (NMS).
     """
+    
+    # Chemin racine du projet
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    
     # Charger le modèle
     model = YOLO(model_path)
-    
+    data_path = os.path.join(project_root, "data.yaml")
     # Évaluer le modèle
     results = model.val(
-        data=os.path.join(labels_folder, "config.yaml"),  # Chemin vers le fichier YAML du dataset
+        data=data_path,  # Chemin vers le fichier YAML du dataset
         split="val",  # Utiliser l'ensemble de validation
         conf=confidence_threshold,
         iou=iou_threshold,
@@ -28,7 +32,7 @@ def evaluate_model(images_folder, labels_folder, model_path, metrics_output_file
         project=os.path.dirname(metrics_output_file),
         name=os.path.basename(metrics_output_file).split(".")[0]
     )
-    
+    print("results.results_dict: ", results.results_dict)
     # Enregistrer les métriques dans un fichier
     metrics = {
         "precision": results.results_dict["metrics/precision"],
