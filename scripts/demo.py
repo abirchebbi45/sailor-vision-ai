@@ -1,6 +1,7 @@
 import cv2
 from ultralytics import YOLO
 import numpy as np
+import os
 
 def load_video(video_path):
     """Load a video file using OpenCV."""
@@ -50,9 +51,10 @@ def process_and_display_video(video_path, model_path):
 
 def main():
     # Define paths to your video and model
-    video_path = "data/test video/Swimming with life jacket.mp4"  # Replace with your video file path
-    model_path = "outputs/exports/yolov8_best.pt"   # Replace with your YOLO model file path (e.g., best.pt)
-
+    video_path = "D:\projects\sailor-vision-ai\data\\test\lifejacket.mp4"
+    model_path = "D:\projects\sailor-vision-ai\outputs\exports\yolov8_best.pt"   # Replace with your YOLO model file path (e.g., best.pt)
+    print(f"Video path: {video_path}")
+    
     try:
         # Process the video and display predictions
         process_and_display_video(video_path, model_path)
