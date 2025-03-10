@@ -2,6 +2,9 @@ import cv2
 from ultralytics import YOLO
 import numpy as np
 import os
+import sys
+import logging
+import contextlib
 
 def load_video(video_path):
     """Load a video file using OpenCV."""
@@ -25,29 +28,38 @@ def process_and_display_video(video_path, model_path):
     cap = load_video(video_path)
     model = load_yolo_model(model_path)
 
-    # Process each frame
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            print("End of video or error reading frame.")
-            break
+    import logging
 
-        # Perform YOLO prediction on the frame
-        results = model.predict(source=frame, conf=0.25, iou=0.45, save=True,
-                                save_txt=True,save_frames=True, save_conf=True, show_labels=True,
-                                show_boxes=True)  # Adjust conf and iou as needed
 
-        # Annotate frame with predictions
-        annotated_frame = results[0].plot()  # Draw boxes and labels on the frame
+    # Open a log file to save the terminal output
+    with open('output_yolo.log', 'a') as log_file:
+        with contextlib.redirect_stdout(log_file):  # Redirect stdout to the log file
+            # Process each frame
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    print("End of video or error reading frame.")
+                    break
 
-        # Display the annotated frame
-        cv2.imshow("YOLO Predictions", annotated_frame)
+                # Perform YOLO prediction on the frame
+                results = model.predict(source=frame, conf=0.25, iou=0.45, save=True,
+                                        save_txt=True,save_frames=True, save_conf=True, show_labels=True,
+                                        show_boxes=True)  # Adjust conf and iou as needed
 
-        # Exit on 'q' key press
-        if cv2.waitKey(100) & 0xFF == ord('q'):
-            break
+                # Annotate frame with predictions
+                annotated_frame = results[0].plot()  # Draw boxes and labels on the frame
+
+                # Display the annotated frame
+                cv2.imshow("YOLO Predictions", annotated_frame)
+
+                # Exit on 'q' key press
+                if cv2.waitKey(100) & 0xFF == ord('q'):
+                    break
 
     # Cleanup
+    # Log the results
+#    for result in results:
+#        logging.info(result)
     cap.release()
     cv2.destroyAllWindows()
 
