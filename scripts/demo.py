@@ -33,7 +33,9 @@ def process_and_display_video(video_path, model_path):
             break
 
         # Perform YOLO prediction on the frame
-        results = model.predict(source=frame, conf=0.25, iou=0.45)  # Adjust conf and iou as needed
+        results = model.predict(source=frame, conf=0.25, iou=0.45, save=True,
+                                save_txt=True,save_frames=True, save_conf=True, show_labels=True,
+                                show_boxes=True)  # Adjust conf and iou as needed
 
         # Annotate frame with predictions
         annotated_frame = results[0].plot()  # Draw boxes and labels on the frame
