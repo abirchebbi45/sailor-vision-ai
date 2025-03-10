@@ -44,7 +44,8 @@ def train_yolo():
             name="train_yolo",
             exist_ok=True
         )
-
+        # Error probably here
+        
         # Sauvegarde des logs après chaque epoch
         best_metric = results.results[0].metrics.top1 if hasattr(results.results[0].metrics, 'top1') else "N/A"
         log_event(f"Epoch {epoch}/{total_epochs} terminée. Meilleure précision : {best_metric}")
