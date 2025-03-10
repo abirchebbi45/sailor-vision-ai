@@ -1,8 +1,25 @@
-# config.yaml
+# config.yaml combiné
 
+# Chemins des ensembles de données pour YOLO
+train: data/images/train  # Chemin vers les images d'entraînement.
+val: data/images/val      # Chemin vers les images de validation.
+test: data/images/test    # Chemin vers les images de test.
+
+# Chemins vers les labels YOLO
+train_labels: data/yolo/train  # Chemin vers les labels d'entraînement.
+val_labels: data/yolo/val      # Chemin vers les labels de validation.
+test_labels: data/yolo/test    # Chemin vers les labels de test.
+
+# Nombre total de classes (4)
+nc: 4
+
+# Noms des classes (dans l'ordre des IDs)
+names: ['swimmer', 'swimmer with life jacket', 'boat', 'life jacket']
+
+# Chemins des dossiers
 paths:
-  images_dir: "data/images"                    # If your images are in this folder, otherwise adjust accordingly.
-  annotations_dir: "data/annotations"          # Directory containing the annotations.
+  images_dir: "data/images"                    # Dossier des images.
+  annotations_dir: "data/annotations"          # Dossier des annotations.
   train_images_dir: "data/images/train"        # Dossier des images d'entraînement.
   val_images_dir: "data/images/val"            # Dossier des images de validation.
   test_images_dir: "data/images/test" 
@@ -10,25 +27,29 @@ paths:
   val_annotations_file: "data/annotations/instances_val_objects_in_water.json"
   test_annotations_file: "data/annotations/instances_test_objects_in_water.json"
 
-  yolo_dataset_dir: "data/yolo"                 # Folder where you will convert annotations for YOLO.
-  trained_model_dir: "models/"                   # Où sauvegarder les modèles entraînés.
-  export_model_dir: "outputs/exports/"           # Où sauvegarder les modèles exportés.
-  output_videos_dir: "outputs/videos/"           # Vidéos de suivi (tracking).
+  yolo_dataset_dir: "data/yolo"                 # Dossier pour les annotations YOLO.
+  trained_model_dir: "models/"                   # Dossier pour les modèles entraînés.
+  export_model_dir: "outputs/exports/"           # Dossier pour les modèles exportés.
+  output_videos_dir: "outputs/videos/"           # Dossier pour les vidéos de suivi.
   log_file: "log.txt"                            # Fichier log à la racine.
 
+# Configuration YOLO
 yolo:
   pretrained_model: "yolov8n.pt"                 # Modèle YOLOv8 de base.
   epochs: 20
   batch_size: 16
   img_size: 640
 
+# Configuration du suivi (tracking)
 tracking:
-  input_video: "assets/input_video.mp4"          # Déplace la vidéo d'entrée dans `assets`, plus logique.
-  output_video: "outputs/videos/tracked_video.mp4" # Vidéo de sortie.
+  input_video: "assets/input_video.mp4"          # Chemin de la vidéo d'entrée.
+  output_video: "outputs/videos/tracked_video.mp4" # Chemin de la vidéo de sortie.
 
+# Configuration de la visualisation
 visualization:
-  output_dir: "outputs/visualizations/"          # Dossier pour les visualisations d'annotations.
+  output_dir: "outputs/visualizations/"          # Dossier pour les visualisations.
 
+# Configuration de l'évaluation
 evaluation:
   val_images_folder: "data/images/val"
   val_labels_folder: "data/yolo_labels/val"
