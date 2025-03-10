@@ -42,7 +42,7 @@ def process_and_display_video(video_path, model_path):
         cv2.imshow("YOLO Predictions", annotated_frame)
 
         # Exit on 'q' key press
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(100) & 0xFF == ord('q'):
             break
 
     # Cleanup
