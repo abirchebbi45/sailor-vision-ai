@@ -65,7 +65,7 @@ def process_and_display_video(video_path, model_path):
 
 def main():
     # Define paths to your video and model
-    video_path = "D:\projects\sailor-vision-ai\data\\test\lifejacket.mp4"
+    video_path = "D:\projects\sailor-vision-ai\data\\test\\rescue men at sea.mp4"
     model_path = "D:\projects\sailor-vision-ai\outputs\exports\yolov8_best.pt"   # Replace with your YOLO model file path (e.g., best.pt)
     print(f"Video path: {video_path}")
     
