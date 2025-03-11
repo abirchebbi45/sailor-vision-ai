@@ -53,7 +53,7 @@ def process_and_display_video(video_path, model_path):
                 cv2.imshow("YOLO Predictions", annotated_frame)
 
                 # Exit on 'q' key press
-                if cv2.waitKey(100) & 0xFF == ord('q'):
+                if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
 
     # Cleanup
@@ -65,7 +65,7 @@ def process_and_display_video(video_path, model_path):
 
 def main():
     # Define paths to your video and model
-    video_path = "D:\projects\sailor-vision-ai\data\\test\\rescue men at sea.mp4"
+    video_path = "D:\projects\sailor-vision-ai\data\\test\men at sea.mp4"
     model_path = "D:\projects\sailor-vision-ai\outputs\exports\yolov8_best.pt"   # Replace with your YOLO model file path (e.g., best.pt)
     print(f"Video path: {video_path}")
     
