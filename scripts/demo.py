@@ -42,7 +42,7 @@ def process_and_display_video(video_path, model_path):
                     break
 
                 # Perform YOLO prediction on the frame
-                results = model.predict(source=frame, conf=0.25, iou=0.45, save=True,
+                results = model.predict(source=frame, conf=0.45, iou=0.45, save=True,
                                         save_txt=True,save_frames=True, save_conf=True, show_labels=True,
                                         show_boxes=True)  # Adjust conf and iou as needed
 
@@ -65,8 +65,8 @@ def process_and_display_video(video_path, model_path):
 
 def main():
     # Define paths to your video and model
-    video_path = "D:\projects\sailor-vision-ai\data\\test\men at sea.mp4"
-    model_path = "D:\projects\sailor-vision-ai\outputs\exports\yolov8_best.pt"   # Replace with your YOLO model file path (e.g., best.pt)
+    video_path = "D:\projects\sailor-vision-ai\data\\test\lifejacket.mp4"
+    model_path = "D:\projects\sailor-vision-ai\outputs\exports\yolov8_best.pt"  
     print(f"Video path: {video_path}")
     
     try:
