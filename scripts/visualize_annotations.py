@@ -16,7 +16,7 @@ def visualize_annotations(split):
         None
     """
     project_root = os.path.dirname(os.path.dirname(__file__))
-    annotations_path = os.path.join(project_root, "data", "annotations", f"instances_{split}_objects_in_water.json")
+    annotations_path = os.path.join(project_root, "data", "annotations", f"instances_{split}_objects_in_water_updated.json")
     images_folder = os.path.join(project_root, "data", "images", split)
     output_folder = os.path.join(project_root, "outputs", "visualizations", split)
 
