@@ -25,6 +25,8 @@ Sailor Vision AI is an advanced maritime surveillance system developed as part o
 ## 📦 Installation
 To set up the project locally, follow these steps:
 
+---
+
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/sailor-vision-ai.git
@@ -35,6 +37,8 @@ pip install -r requirements.txt
 
 # Run the application
 python main.py
+
+---
 
 ## Usage
 1. Connect the system to the NVIDIA Orin module.
