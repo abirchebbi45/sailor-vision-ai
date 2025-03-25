@@ -1,7 +1,13 @@
 # Sailor Vision AI
 
+<p align="center">
+  <img src="assets/Sailor vision logo.png" alt="Sailor Vision AI Logo" width="200">
+</p>
+
 ## Project Overview
 Sailor Vision AI is an advanced maritime surveillance system developed as part of the **SailorTech** project. The system integrates an AI-powered vision module utilizing **NVIDIA Orin** and **YOLOv8** for real-time detection and monitoring of floating objects on the water surface. By leveraging deep learning and computer vision algorithms, it enhances maritime safety and situational awareness.
+
+**SailorTech** is an innovative initiative focused on transforming traditional watercraft into autonomous vessels through cutting-edge technologies like **NVIDIA Orin**, AI-powered vision, and robotics.
 
 ## 🛠 Features
 - **Real-Time Object Detection:** Uses YOLOv8 to identify floating objects such as debris, boats, and obstacles.
