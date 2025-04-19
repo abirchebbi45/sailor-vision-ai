@@ -1,0 +1,939 @@
+/* src/assets/style.qss */
+
+
+/* Main application styles */
+QWidget {
+    font-family: "Inter", sans-serif;
+    color: #333333;
+}
+
+QMainWindow {
+    background-color: #f5f5f5;
+}
+QScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#central_widget {
+    background-color: #f5f5f5;
+}
+
+/* Sidebar styles */
+
+#logoContainer {
+    background-color: transparent;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 10px 0;
+}
+
+QPushButton#NavButton {
+    border: none;
+    border-radius: 5px;
+    padding: 10px;
+    margin: 2px 8px;
+    text-align: left;
+    background-color: transparent;
+}
+
+#NavButton:hover {
+    background-color: #f0f0f0;
+}
+
+/* Header styles */
+#headerWidget {
+    background-color: white;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 10px 0;
+    height: 60px;
+}
+#pageTitleLabel {
+    font-size: 20px;
+    font-weight: bold;
+    color: #333333;
+}
+#actionButton {
+    background-color: #2196F3;
+    color: white;
+    border-radius: 4px;
+    padding: 6px 12px;
+    border: none;
+}
+#actionButton:hover {
+    background-color: #1976D2;
+}
+
+/* Dashboard Widgets */
+QWidget#dashboardWidget {
+    background-color: #f5f5f5;
+    padding: 20px;
+}
+
+#SectionTitle {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    padding-bottom: 5px;
+}
+
+#sectionFrame {
+    background-color: rgba(240, 240, 245, 0.7);
+    border-radius: 8px;
+    border: 1px solid rgba(220, 220, 225, 0.9);
+}
+
+/* Camera widget styles */
+
+#cameraFeed {
+    background-color: #313131;
+    border-radius: 4px;
+}
+
+#cameraLocation {
+    font-weight: bold;
+    color: #333333;
+    font-size: 13px;
+}
+
+/* Alert card styles */
+QWidget#AlertsContainer {
+    margin-bottom: 15px;
+}
+
+#acknowledgeButton {
+    background-color: #2196F3;
+    color: white;
+    border-radius: 4px;
+    padding: 6px 12px;
+    border: none;
+}
+#acknowledgeButton:hover {
+    background-color: #1976D2;
+}
+
+/* System status widget */
+
+QPushButton#ActionButton {
+    background-color: #2196f3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 15px;
+}
+
+/* Scrollbars */
+QScrollBar:vertical {
+    border: none;
+    background: #f0f0f0;
+    width: 8px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background: #bdbdbd;
+    border-radius: 4px;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+/* Main application styles */
+
+
+QWidget {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: #333333;
+}
+
+/* Header styles */
+#header {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 10px;
+}
+
+#appTitle {
+    font-size: 18px;
+    font-weight: bold;
+    color: #1E88E5;
+}
+
+#activeTab {
+    font-size: 15px;
+    font-weight: bold;
+    color: #1E88E5;
+    border-bottom: 2px solid #1E88E5;
+    padding-bottom: 5px;
+}
+
+/* Sidebar styles */
+#Sidebar {
+    background-color: white;
+    border-right: 1px solid #e0e0e0;
+}
+#sidebarButton {
+    text-align: left;
+    padding: 12px 15px;
+    border: none;
+    background-color: transparent;
+    font-size: 14px;
+    border-radius: 0;
+}
+
+#sidebarButton:hover {
+    background-color: #f5f5f5;
+}
+
+#sidebarButton[active=true] {
+    background-color: #E3F2FD;
+    color: #1E88E5;
+    font-weight: bold;
+}
+#userAvatar {
+    background-color: #E3F2FD;
+    border-radius: 18px;
+}
+
+#linkButton {
+    color: #1E88E5;
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    text-decoration: underline;
+}
+
+/* Content section styles */
+#contentSection {
+    background-color: #ffffff; /* Changé de #f5f5f5 à #ffffff pour plus de contraste */
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    padding: 15px;
+}
+
+#sectionHeader {
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+/* Button styles */
+#primaryButton {
+    background-color: #1E88E5;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    min-width: 80px;
+}
+
+#primaryButton:hover {
+    background-color: #1976D2;
+}
+
+#secondaryButton {
+    background-color: #e0e0e0;
+    color: #333333;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    min-width: 80px;
+}
+
+#secondaryButton:hover {
+    background-color: #d0d0d0;
+}
+
+#outlineButton {
+    background-color: transparent;
+    color: #1E88E5;
+    border: 1px solid #1E88E5;
+    border-radius: 4px;
+    padding: 8px 12px;
+    min-width: 80px;
+}
+
+#outlineButton:hover {
+    background-color: #E3F2FD;
+}
+
+#dangerButton {
+    background-color: #f44336;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    min-width: 80px;
+}
+
+#dangerButton:hover {
+    background-color: #d32f2f;
+}
+
+#iconButton {
+    background-color: transparent;
+    border: none;
+    padding: 5px;
+}
+
+#pageButton {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+}
+
+#activePageButton {
+    background-color: #1E88E5;
+    color: white;
+    border: none;
+    border-radius: 4px;
+}
+#liveFeedWidget {
+    margin: 0px;
+    padding: 0px;
+}
+/* Camera widgets styles */
+
+#cameraWidget {
+    background-color: white;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+}
+
+#cameraTitle, #cameraLabel {
+    font-weight: bold;
+    font-size: 14px;
+}
+
+
+/* Alert styles */
+#alertType {
+    font-weight: bold;
+    color: #333333;
+    font-size: 13px;
+}
+
+#alertDescription {
+    color: #555555;
+    font-size: 12px;
+}
+
+#alertTime {
+    color: #757575;
+    font-size: 12px;
+}
+
+/* Recording styles */
+#recordingItem {
+    background-color: #ffffff;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    padding: 10px;
+}
+
+#recordingTitle {
+    font-weight: bold;
+}
+
+#recordingTime {
+    color: #757575;
+    font-size: 12px;
+}
+
+/* User card styles */
+#userCard {
+    background-color: #ffffff;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    padding: 15px;
+}
+
+#userJobTitle {
+    color: #757575;
+    font-style: italic;
+}
+
+/* Dialog styles */
+#dialogTitle {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+
+/* Video player */
+#videoPlayer {
+    background-color: #ffffff;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    padding: 10px;
+}
+
+/* Login screen styles */
+#loginContainer {
+    background-color: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0; /* Remplacement de box-shadow */
+}
+
+#loginTitle {
+    font-size: 24px;
+    font-weight: bold;
+    color: #1E88E5;
+}
+
+#loginSubtitle {
+    color: #757575;
+    margin-bottom: 10px;
+}
+
+#loginInput {
+    background-color: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+#forgotPassword {
+    color: #1E88E5;
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+/* Status indicator */
+#statusIndicator {
+    background-color: #4CAF50;
+    border-radius: 50%;
+}
+
+/* Attribution - remove in production */
+#attribution {
+    color: #9e9e9e;
+    font-size: 12px;
+    margin-top: 10px;
+}
+
+/* QSlider customization */
+QSlider::groove:horizontal {
+    border: 1px solid #bdbdbd;
+    height: 8px;
+    background: #e0e0e0;
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+QSlider::handle:horizontal {
+    background: #1E88E5;
+    border: 1px solid #1976D2;
+    width: 18px;
+    height: 18px;
+    margin: -6px 0;
+    border-radius: 9px;
+}
+
+/* QProgressBar customization */
+QProgressBar {
+    border: 1px solid #bdbdbd;
+    border-radius: 4px;
+    text-align: center;
+    height: 20px;
+}
+
+QProgressBar::chunk {
+    background-color: #1E88E5;
+    width: 1px;
+}
+
+/* QComboBox customization */
+QComboBox {
+    border: 1px solid #bdbdbd;
+    border-radius: 4px;
+    padding: 4px 10px;
+    min-width: 6em;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
+    border-left: 1px solid #bdbdbd;
+}
+
+/* 
+SailorVision - Main Application Stylesheet
+*/
+
+/* Global Styles */
+QWidget {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 12px;
+    color: #333333;
+    background-color: #f8f9fa;
+}
+
+
+/* Login Screen */
+#loginWidget {
+    background-color: #ffffff;
+    border-radius: 8px;
+}
+
+#logoLabel {
+    margin-bottom: 20px;
+}
+
+#titleLabel {
+    color: #219ebc;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+#subtitleLabel {
+    color: #8d99ae;
+    font-size: 14px;
+    margin-bottom: 30px;
+}
+
+QLineEdit {
+    padding: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background-color: #f5f5f5;
+    min-height: 20px;
+}
+
+QLineEdit:focus {
+    border: 1px solid #219ebc;
+    background-color: #ffffff;
+}
+
+QPushButton {
+    background-color: #219ebc;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 10px;
+    font-weight: bold;
+    min-height: 20px;
+}
+
+QPushButton:hover {
+    background-color: #1b89a7;
+}
+
+QPushButton:pressed {
+    background-color: #177992;
+}
+
+QPushButton:disabled {
+    background-color: #cccccc;
+    color: #888888;
+}
+
+#forgotPasswordLink {
+    color: #219ebc;
+    text-decoration: none;
+    background: none;
+    border: none;
+    text-align: right;
+}
+
+#forgotPasswordLink:hover {
+    text-decoration: underline;
+}
+
+/* Sidebar Navigation */
+#sidebarWidget {
+    background-color: #ffffff;
+    border-right: 1px solid #e0e0e0;
+    min-width: 220px;
+    max-width: 220px;
+}
+
+
+
+#navigationList QWidget {
+    background-color: transparent;
+    padding: 10px 0;
+}
+
+#NavButton {
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 2px 8px;
+}
+
+.NavButton:hover {
+    background-color: #f0f0f0;
+    color: #333333;
+}
+
+#NavButton[active="true"] {
+    background-color: #E3F2FD;
+    color: #1E88E5;
+}
+
+.NavButton QLabel {
+    padding-left: 10px;
+}
+#userProfileContainer {
+    border-top: 1px solid #e0e0e0;
+    padding: 10px;
+}
+
+
+#userName {
+    font-weight: bold;
+    color: #333333;
+}
+
+#viewProfileLink {
+    background: transparent;
+    border: none;
+    color: #1E88E5;
+    text-align: left;
+    padding: 0;
+}
+#viewProfileLink:hover {
+    color: #219ebc;
+    text-decoration: underline;
+}
+
+/* Header */
+
+#searchBox {
+    border: 1px solid #e0e0e0;
+    border-radius: 16px;
+    padding: 5px 10px;
+    padding-left: 30px;
+    background-image: url("assets/search.svg");
+    background-repeat: no-repeat;
+    background-position: 10px center;
+    width: 250px;
+}
+
+#searchBox:focus {
+    border: 1px solid #219ebc;
+    background-color: #ffffff;
+}
+
+/* Dashboard */
+#dashboardWidget {
+    background-color: #f8f9fa;
+    padding: 20px;
+}
+
+
+.Card {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px; /* Réduction de l'espacement */
+}
+
+.CardTitle {
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 10px;
+}
+
+.StatNumber {
+    font-size: 28px;
+    font-weight: bold;
+    color: #219ebc;
+}
+
+.StatLabel {
+    color: #8d99ae;
+    font-size: 12px;
+}
+
+/* Camera Feed and Recordings */
+.CameraFeed {
+    background-color: #2b2b2b;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    min-height: 180px;
+}
+
+.CameraLabel {
+    font-weight: bold;
+    padding: 5px 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    border-radius: 4px;
+}
+
+.StatusLabel {
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.StatusActive {
+    background-color: #4caf50;
+    color: white;
+}
+
+.StatusInactive {
+    background-color: #f44336;
+    color: white;
+}
+
+.RecordingItem {
+    background-color: #ffffff;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #e0e0e0;
+}
+
+.RecordingTitle {
+    font-weight: bold;
+    color: #333333;
+}
+
+.RecordingInfo {
+    color: #8d99ae;
+    font-size: 11px;
+}
+
+.PaginationButton {
+    min-width: 30px;
+    max-width: 30px;
+    min-height: 30px;
+    max-height: 30px;
+    border-radius: 15px;
+    font-size: 12px;
+    text-align: center;
+    background-color: #f5f5f5;
+}
+
+.PaginationButton:hover {
+    background-color: #e0e0e0;
+}
+
+.PaginationButtonActive {
+    background-color: #219ebc;
+    color: white;
+}
+
+/* User Management */
+.UserCard {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    border: 1px solid #e0e0e0;
+}
+
+
+.UserRole {
+    background-color: #e6f4f7;
+    color: #219ebc;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.UserTitle {
+    color: #8d99ae;
+    font-size: 12px;
+}
+
+.UserEmail {
+    color: #8d99ae;
+    font-size: 12px;
+}
+
+.ActionButton {
+    min-width: 70px;
+    max-width: 70px;
+    padding: 5px;
+    font-size: 11px;
+    border: 1px solid #219ebc;
+    background-color: transparent;
+    color: #219ebc;
+}
+
+.ActionButton:hover {
+    background-color: #219ebc;
+    color: white;
+}
+
+.DeleteButton {
+    border: 1px solid #f44336;
+    color: #f44336;
+}
+
+.DeleteButton:hover {
+    background-color: #f44336;
+    color: white;
+}
+
+/* Settings */
+.SettingsSection {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #e0e0e0;
+}
+
+.SettingsSectionTitle {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 15px;
+}
+
+QLabel[mandatory="true"]::after {
+    content: " *";
+    color: red;
+}
+
+QRadioButton, QCheckBox {
+    padding: 5px;
+}
+
+QProgressBar {
+    border: none;
+    border-radius: 3px;
+    text-align: center;
+    background-color: #e0e0e0;
+}
+
+QProgressBar::chunk {
+    background-color: #219ebc;
+    border-radius: 3px;
+}
+
+/* Alerts */
+#alertItem {
+    background-color: white;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    padding: 5px;
+}
+
+
+.AlertInfo {
+    color: #8d99ae;
+    font-size: 12px;
+}
+
+.AlertTime {
+    color: #8d99ae;
+    font-style: italic;
+    font-size: 11px;
+}
+
+.MotionAlert {
+    border-left: 4px solid #ffc107;
+}
+
+.IntrusionAlert {
+    border-left: 4px solid #f44336;
+}
+
+.SystemAlert {
+    border-left: 4px solid #9c27b0;
+}
+
+/* Dialog Boxes */
+QDialog {
+    background-color: #ffffff;
+}
+
+QDialog QLabel {
+    font-size: 13px;
+}
+
+QDialog QPushButton {
+    min-width: 80px;
+}
+
+.DialogTitle {
+    font-size: 18px;
+    font-weight: bold;
+    color: #219ebc;
+    margin-bottom: 15px;
+}
+
+/* Tooltips */
+QToolTip {
+    background-color: #333333;
+    color: #ffffff;
+    border: none;
+    padding: 5px;
+}
+
+/* Scrollbars */
+QScrollBar:vertical {
+    border: none;
+    background-color: #f0f0f0;
+    width: 8px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #c0c0c0;
+    min-height: 30px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #a0a0a0;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar:horizontal {
+    border: none;
+    background-color: #f0f0f0;
+    height: 8px;
+    margin: 0px;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: #c0c0c0;
+    min-width: 30px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: #a0a0a0;
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0px;
+}
+
+QPushButton#AcknowledgeButton:hover {
+    background-color: #E64A19;
+}
+
+/* System status section */
+#Card {
+    background-color: white;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+}
+
+#ActionButton {
+    background-color: #2196F3;
+    color: white;
+    border-radius: 4px;
+    padding: 6px 12px;
+    border: none;
+}
+
+#ActionButton:hover {
+    background-color: #1976D2;
+}
