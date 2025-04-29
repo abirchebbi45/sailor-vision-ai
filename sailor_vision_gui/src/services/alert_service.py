@@ -14,19 +14,19 @@ logger = logging.getLogger(__name__)
 
 class AlertService:
     def get_all_alerts(self):
-        """Récupérer toutes les alertes"""
+        """Retrieve all alerts"""
         session = get_session()
         try:
             alerts = session.query(Alert).order_by(Alert.timestamp.desc()).all()
             return alerts
         except SQLAlchemyError as e:
-            logger.error(f"Erreur lors de la récupération des alertes: {str(e)}")
+            logger.error(f"Error while retrieving alerts: {str(e)}")
             return []
         finally:
             close_session(session)
     
     def get_unacknowledged_alerts(self):
-        """Récupérer les alertes non confirmées"""
+        """Retrieve unacknowledged alerts"""
         session = get_session()
         try:
             alerts = session.query(Alert).filter(
@@ -35,56 +35,54 @@ class AlertService:
             ).order_by(Alert.timestamp.desc()).all()
             return alerts
         except SQLAlchemyError as e:
-            logger.error(f"Erreur lors de la récupération des alertes non confirmées: {str(e)}")
+            logger.error(f"Error while retrieving unacknowledged alerts: {str(e)}")
             return []
         finally:
             close_session(session)
     
     def get_alert_history(self):
-        """Récupérer l'historique des alertes"""
+        """Retrieve the history of acknowledged alerts"""
         session = get_session()
         try:
             alerts = (
-            session.query(Alert)
-            .options(joinedload(Alert.camera))
-            .filter(Alert.is_acknowledged == True)
-            .order_by(Alert.timestamp.desc())
-            #.limit(20)
-            .all()
-        )
+                session.query(Alert)
+                .options(joinedload(Alert.camera))
+                .filter(Alert.is_acknowledged == True)
+                .order_by(Alert.timestamp.desc())
+                # .limit(20)
+                .all()
+            )
             return alerts
         except SQLAlchemyError as e:
-            logger.error(f"Erreur lors de la récupération de l'historique des alertes: {str(e)}")
+            logger.error(f"Error while retrieving alert history: {str(e)}")
             return []
         finally:
             close_session(session)
     
     def get_alert(self, alert_id):
-        """Récupérer une alerte spécifique par ID"""
+        """Retrieve a specific alert by ID"""
         session = get_session()
         try:
-            alert = session.query(Alert).filter(Alert.id == alert_id).first()
-            # on force le chargement de la relation camera AVANT de fermer la session
             alert = (
                 session.query(Alert)
-                        .options(joinedload(Alert.camera))
-                        .filter(Alert.id == alert_id)
-                        .first()
+                .options(joinedload(Alert.camera))
+                .filter(Alert.id == alert_id)
+                .first()
             )
             return alert
         except SQLAlchemyError as e:
-            logger.error(f"Erreur lors de la récupération de l'alerte {alert_id}: {str(e)}")
+            logger.error(f"Error while retrieving alert {alert_id}: {str(e)}")
             return None
         finally:
             close_session(session)
     
     def acknowledge_alert(self, alert_id, user_id=None):
-        """Confirmer une alerte"""
+        """Acknowledge an alert"""
         session = get_session()
         try:
             alert = session.query(Alert).filter(Alert.id == alert_id).first()
             if not alert:
-                logger.warning(f"Alerte {alert_id} non trouvée pour confirmation")
+                logger.warning(f"Alert {alert_id} not found for acknowledgment")
                 return False
             
             alert.is_acknowledged = True
@@ -92,38 +90,38 @@ class AlertService:
             alert.acknowledged_at = datetime.now()
             
             session.commit()
-            logger.info(f"Alerte {alert_id} confirmée avec succès")
+            logger.info(f"Alert {alert_id} successfully acknowledged")
             return True
         except SQLAlchemyError as e:
-            logger.error(f"Erreur lors de la confirmation de l'alerte {alert_id}: {str(e)}")
+            logger.error(f"Error while acknowledging alert {alert_id}: {str(e)}")
             session.rollback()
             return False
         finally:
             close_session(session)
     
     def archive_alert(self, alert_id):
-        """Archiver une alerte"""
+        """Archive an alert"""
         session = get_session()
         try:
             alert = session.query(Alert).filter(Alert.id == alert_id).first()
             if not alert:
-                logger.warning(f"Alerte {alert_id} non trouvée pour archivage")
+                logger.warning(f"Alert {alert_id} not found for archiving")
                 return False
             
             alert.is_archived = True
             
             session.commit()
-            logger.info(f"Alerte {alert_id} archivée avec succès")
+            logger.info(f"Alert {alert_id} successfully archived")
             return True
         except SQLAlchemyError as e:
-            logger.error(f"Erreur lors de l'archivage de l'alerte {alert_id}: {str(e)}")
+            logger.error(f"Error while archiving alert {alert_id}: {str(e)}")
             session.rollback()
             return False
         finally:
             close_session(session)
     
     def create_alert(self, alert_data):
-        """Créer une nouvelle alerte"""
+        """Create a new alert"""
         session = get_session()
         try:
             alert = Alert(
@@ -139,18 +137,18 @@ class AlertService:
             session.add(alert)
             session.commit()
             
-            logger.info(f"[ALERTE ENREGISTRÉE] ID: {alert.id}, Type: {alert.type}, Message: {alert.message}")
+            logger.info(f"[ALERT SAVED] ID: {alert.id}, Type: {alert.type}, Message: {alert.message}")
 
             return alert
         except SQLAlchemyError as e:
-            logger.error(f"Erreur lors de la création de l'alerte: {str(e)}")
+            logger.error(f"Error while creating alert: {str(e)}")
             session.rollback()
             return None
         finally:
             close_session(session)
     
     def process_yolo_detection(self, alert_data):
-        """Traiter toutes les détections sans exception"""
+        """Process YOLO detections and create alerts"""
         try:
             if not alert_data.get('detections'):
                 return False
@@ -159,7 +157,7 @@ class AlertService:
             try:
                 camera = session.query(Camera).filter(Camera.is_active == True).first()
                 if not camera:
-                    logger.error("Aucune caméra active trouvée !")
+                    logger.error("No active camera found!")
                     return False
                 
                 camera_id = camera.id
@@ -169,27 +167,27 @@ class AlertService:
                         alert = Alert(
                             type=AlertType.GENERAL_DETECTION.value,
                             camera_id=camera_id,
-                            message=f"{detection['class']} détecté (Confiance: {detection['confidence']:.2f})",
+                            message=f"{detection['class']} detected (Confidence: {detection['confidence']:.2f})",
                             timestamp=datetime.fromtimestamp(float(detection['timestamp'])),
                             detection_class=detection['class'],
-                            image_data=str(detection.get('bbox', 'Aucune position'))  # Added bbox info
+                            image_data=str(detection.get('bbox', 'No position'))  # Added bbox info
                         )
                         
                         session.add(alert)
-                        logger.info(f"Ajout d'une alerte: {detection['class']}")
+                        logger.info(f"Added an alert: {detection['class']}")
                     except Exception as e:
-                        logger.error(f"Erreur lors de l'ajout d'une détection: {e}")
+                        logger.error(f"Error while adding a detection: {e}")
                 
                 session.commit()
-                logger.info(f"Commit réussi pour {len(alert_data['detections'])} détections")
+                logger.info(f"Successfully committed {len(alert_data['detections'])} detections")
                 return True
             except Exception as e:
                 session.rollback()
-                logger.error(f"Erreur DB: {e}")
+                logger.error(f"Database error: {e}")
                 return False
             finally:
                 close_session(session)
 
         except Exception as e:
-            logger.error(f"Erreur traitement détections: {str(e)}")
+            logger.error(f"Error processing detections: {str(e)}")
             return False
