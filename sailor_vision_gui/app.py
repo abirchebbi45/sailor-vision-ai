@@ -1,13 +1,16 @@
 import sys
 import os
 from PyQt5.QtWidgets import QApplication, QMainWindow, QStackedWidget, QWidget, QVBoxLayout, QHBoxLayout
-from PyQt5.QtCore import Qt, pyqtSignal, QSize
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import QIcon, QFontDatabase, QFont
 import logging
+import rclpy
+from rclpy.node import Node
 
 from src.components.login import LoginScreen
 from src.components.dashboard import DashboardScreen
 from src.components.live_feed import LiveFeedScreen
+from src.components.alerts import AlertsScreen
 from src.components.shared import Sidebar, HeaderWidget
 
 from database import init_db
@@ -19,8 +22,9 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, ros_node):
         super().__init__()
+        self.ros_node = ros_node
         
         # Initialize database
         init_db()
@@ -103,7 +107,7 @@ class MainWindow(QMainWindow):
             lambda: self.switch_view("Playback", None)  # To be implemented
         )
         self.sidebar.alerts_clicked.connect(
-            lambda: self.switch_view("Alerts", None)  # To be implemented
+            lambda: self.switch_view("Alerts", self.alerts_screen )  # To be implemented
         )
         self.sidebar.user_management_clicked.connect(
             lambda: self.switch_view("User Management", None)  # To be implemented
@@ -120,11 +124,14 @@ class MainWindow(QMainWindow):
 
     def initialize_screens(self, user_data):
         """Initialize different screens"""
-        self.dashboard_screen = DashboardScreen(user_data=user_data)
-        self.live_feed_screen = LiveFeedScreen(user_data=user_data)
+        self.dashboard_screen  = DashboardScreen(user_data=user_data)
+        self.live_feed_screen  = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node)
+        self.alerts_screen     = AlertsScreen(user_data=user_data,    ros_node=self.ros_node)
+
         
         self.stacked_widget.addWidget(self.dashboard_screen)
         self.stacked_widget.addWidget(self.live_feed_screen)
+        self.stacked_widget.addWidget(self.alerts_screen)
 
     def switch_view(self, title, widget):
         """Change active view"""
@@ -173,6 +180,9 @@ def setup_fonts():
     QApplication.setFont(app_font)
 
 def main():
+
+    rclpy.init()
+    ros_node = Node('sailor_vision_bridge')
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     
@@ -199,9 +209,18 @@ def main():
     
     setup_fonts()
     
-    window = MainWindow()
+    window = MainWindow(ros_node)
     window.show()
-    sys.exit(app.exec_())
+    # 3) Boucle ROS ↔ Qt
+    timer = QTimer()
+    timer.timeout.connect(lambda: rclpy.spin_once(ros_node, timeout_sec=0.0))
+    timer.start(10)
+
+    exit_code = app.exec_()
+
+    # 4) Arrêt propre
+    rclpy.shutdown()
+    sys.exit(exit_code)
 
 if __name__ == "__main__":
     main()
