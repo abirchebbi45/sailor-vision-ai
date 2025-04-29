@@ -44,9 +44,14 @@ class AlertService:
         """Récupérer l'historique des alertes"""
         session = get_session()
         try:
-            alerts = session.query(Alert).filter(
-                Alert.is_acknowledged == True
-            ).order_by(Alert.timestamp.desc()).limit(20).all()
+            alerts = (
+            session.query(Alert)
+            .options(joinedload(Alert.camera))
+            .filter(Alert.is_acknowledged == True)
+            .order_by(Alert.timestamp.desc())
+            #.limit(20)
+            .all()
+        )
             return alerts
         except SQLAlchemyError as e:
             logger.error(f"Erreur lors de la récupération de l'historique des alertes: {str(e)}")
