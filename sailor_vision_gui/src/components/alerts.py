@@ -8,6 +8,8 @@ from PyQt5.QtGui import QPixmap, QIcon
 import os
 import json
 import logging
+import csv
+from PyQt5.QtWidgets import QFileDialog, QMessageBox
 
 from shared.alert_subscriber import ROSAlertBridge
 from src.services.alert_service import AlertService
@@ -253,6 +255,7 @@ class AlertsScreen(QWidget):
         
         # Bouton d'exportation
         export_btn = QPushButton("Export")
+        export_btn.clicked.connect(self.export_alert_history)
         export_btn.setObjectName("secondaryButton")
         filter_layout.addWidget(export_btn)
         
@@ -466,3 +469,27 @@ class AlertsScreen(QWidget):
         self.alert_service.close()
         # Fermer le service de base de données
         self.alert_service.close_db()
+    
+    def export_alert_history(self):
+        """ Exporter l'historique des alertes vers un fichier CSV"""
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save File", "", "CSV Files (*.csv)")
+        
+        if file_path:
+            alerts = self.alert_service.get_alert_history()
+            try:
+                with open(file_path, mode='w', newline='', encoding='utf-8') as file:
+                    writer = csv.writer(file)
+                    writer.writerow(["ID", "Type", "Message", "Date", "Heure", "Caméra", "Classe"])
+                    for alert in alerts:
+                        writer.writerow([
+                            alert.id,
+                            alert.type if isinstance(alert.type, str) else alert.type.value,
+                            alert.message,
+                            alert.timestamp.strftime("%d/%m/%Y"),
+                            alert.timestamp.strftime("%H:%M:%S"),
+                            alert.camera.location if alert.camera else "N/A",
+                            alert.detection_class
+                        ])
+                QMessageBox.information(self, "Export réussi", f"Historique exporté avec succès dans:\n{file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Erreur d'export", f"Erreur lors de l'export:\n{str(e)}")
