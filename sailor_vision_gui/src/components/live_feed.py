@@ -280,7 +280,7 @@ class ExpandedCameraWidget(QWidget):
 
 
 class LiveFeedScreen(QWidget):
-    def __init__(self, user_data=None):
+    def __init__(self, user_data=None, ros_node=None):
         super().__init__()
         self.user_data = user_data
         # Sample camera data with more realistic information
@@ -302,10 +302,10 @@ class LiveFeedScreen(QWidget):
         self.init_ui()
 
         # Start ROS image bridge
-        self.ros_bridge = ROSImageBridge()
+        self.ros_bridge = ROSImageBridge(ros_node)
         # Use Qt.QueuedConnection to avoid threading issues
         self.ros_bridge.image_received.connect(self.update_cam_a_feed, Qt.QueuedConnection)
-        self.ros_bridge.start()
+        #self.ros_bridge.start()
     
     def init_ui(self):
         # Create a main layout to allow widget overlay
