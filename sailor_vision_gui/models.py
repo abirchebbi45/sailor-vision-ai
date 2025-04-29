@@ -11,6 +11,7 @@ class UserRole(enum.Enum):
     GUEST = "Guest"
 
 class AlertType(enum.Enum):
+    GENERAL_DETECTION = "Détection Générale"
     MOTION = "Motion Detected"
     INTRUSION = "Intrusion"
     CAMERA_OFFLINE = "Camera Offline"
@@ -90,7 +91,8 @@ class Alert(Base):
     __tablename__ = "alerts"
     
     id = Column(Integer, primary_key=True)
-    type = Column(Enum(AlertType), nullable=False)
+    # Utilisation de String à la place de Enum pour éviter les conflits en base
+    type = Column(String(50), nullable=False)
     camera_id = Column(Integer, ForeignKey("cameras.id"))
     message = Column(Text, nullable=False)
     timestamp = Column(DateTime, default=func.now())
@@ -99,6 +101,7 @@ class Alert(Base):
     acknowledged_at = Column(DateTime)
     is_archived = Column(Boolean, default=False)
     image_data = Column(String)  # Path to snapshot image
+    detection_class = Column(String(50), default='non spécifié')
     
     # Relationships
     camera = relationship("Camera", back_populates="alerts")
