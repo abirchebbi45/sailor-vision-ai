@@ -11,6 +11,7 @@ from src.components.login import LoginScreen
 from src.components.dashboard import DashboardScreen
 from src.components.live_feed import LiveFeedScreen
 from src.components.alerts import AlertsScreen
+from src.components.user_management import UserManagementScreen
 from src.components.shared import Sidebar, HeaderWidget
 
 from database import init_db
@@ -107,10 +108,10 @@ class MainWindow(QMainWindow):
             lambda: self.switch_view("Playback", None)  # To be implemented
         )
         self.sidebar.alerts_clicked.connect(
-            lambda: self.switch_view("Alerts", self.alerts_screen )  # To be implemented
+            lambda: self.switch_view("Alerts", self.alerts_screen )  
         )
         self.sidebar.user_management_clicked.connect(
-            lambda: self.switch_view("User Management", None)  # To be implemented
+            lambda: self.switch_view("User Management",  self.user_management_screen)  
         )
         self.sidebar.settings_clicked.connect(
             lambda: self.switch_view("Settings", None)  # To be implemented
@@ -127,11 +128,13 @@ class MainWindow(QMainWindow):
         self.dashboard_screen  = DashboardScreen(user_data=user_data)
         self.live_feed_screen  = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node)
         self.alerts_screen     = AlertsScreen(user_data=user_data,    ros_node=self.ros_node)
+        self.user_management_screen = UserManagementScreen(user_data=user_data)
 
         
         self.stacked_widget.addWidget(self.dashboard_screen)
         self.stacked_widget.addWidget(self.live_feed_screen)
         self.stacked_widget.addWidget(self.alerts_screen)
+        self.stacked_widget.addWidget(self.user_management_screen)
 
     def switch_view(self, title, widget):
         """Change active view"""
@@ -143,13 +146,33 @@ class MainWindow(QMainWindow):
             if title == "Dashboard":
                 self.header.set_search_box_visibility(True)
                 self.header.set_search_placeholder("Search cameras, alerts...")
+                self.header.search_text_changed.disconnect() if hasattr(self.header, "_dashboard_disconnect_id") else None
+                """ self.header._disconnect_id = self.header.search_text_changed.connect(self.dashboard_screen.filter_items) """
             elif title == "Live Feed":
                 self.header.set_search_box_visibility(True)
                 self.header.set_search_placeholder("Search cameras...")
+                """ self.header.search_text_changed.disconnect() if hasattr(self.header, "_live_feed_disconnect_id") else None 
+                self.header._live_feed_disconnect_id = self.header.search_text_changed.connect(self.live_feed_screen.filter_cameras) """
+                
+                self.header.set_action_button("Add Camera", True)
+                self.header.action_button_clicked.disconnect() if hasattr(self.header, "_action_disconnect_id") else None
+                self.header._action_disconnect_id = self.header.action_button_clicked.connect(self.live_feed_screen.show_add_camera_dialog)
+
+            elif title == "User Management":
+                self.header.set_search_box_visibility(True)
+                self.header.set_search_placeholder("Search users...")
+                self.header.search_text_changed.disconnect() if hasattr(self.header, "_disconnect_id") else None
+                # Connecter à la fonction de filtrage des utilisateurs
+                self.header._disconnect_id = self.header.search_text_changed.connect(self.user_management_screen.filter_users)
+                # Configurer le bouton d'action pour ajouter un utilisateur
+                self.header.set_action_button("Add User", True)
+                self.header.action_button_clicked.disconnect() if hasattr(self.header, "_action_disconnect_id") else None
+                self.header._action_disconnect_id = self.header.action_button_clicked.connect(self.user_management_screen.on_add_user_clicked)
             else:
                 # Other views may have different search needs
                 self.header.set_search_box_visibility(True)
                 self.header.set_search_placeholder(f"Search {title.lower()}...")
+                self.header.set_action_button("", False)  # Désactiver le bouton d'action par défaut
         else:
             logger.warning(f"Screen '{title}' not implemented")
 
@@ -191,6 +214,7 @@ def main():
     
     # Setup style
     style_path = os.path.join(os.path.dirname(__file__), "src", "assets", "style.qss")
+    print(f"Loading style from {style_path}")
     try:
         with open(style_path, "r") as f:
             app.setStyleSheet(f.read())
