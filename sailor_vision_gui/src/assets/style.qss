@@ -342,19 +342,6 @@ QWidget {
     font-size: 12px;
 }
 
-/* User card styles */
-#userCard {
-    background-color: #ffffff;
-    border-radius: 6px;
-    border: 1px solid #e0e0e0;
-    padding: 15px;
-}
-
-#userJobTitle {
-    color: #757575;
-    font-style: italic;
-}
-
 /* Dialog styles */
 #dialogTitle {
     font-size: 18px;
@@ -730,7 +717,6 @@ QPushButton:disabled {
     border: 1px solid #e0e0e0;
 }
 
-
 .UserRole {
     background-color: #e6f4f7;
     color: #219ebc;
@@ -748,6 +734,11 @@ QPushButton:disabled {
 .UserEmail {
     color: #8d99ae;
     font-size: 12px;
+}
+
+#userJobTitle {
+    color: #757575;
+    font-style: italic;
 }
 
 .ActionButton {
