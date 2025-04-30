@@ -86,7 +86,6 @@ class CameraFeedWidget(QFrame):
         
     def init_ui(self):
         self.setObjectName("liveFeedWidget")
-        self.setMinimumHeight(300)
         self.setFrameShape(QFrame.StyledPanel)
         
         layout = QVBoxLayout(self)
@@ -320,7 +319,7 @@ class LiveFeedScreen(QWidget):
         # Sub-layout for the main content
         content_layout = QVBoxLayout(self.content_widget)
         content_layout.setContentsMargins(20, 20, 20, 20)
-        content_layout.setSpacing(20)
+        content_layout.setSpacing(0)
         
         # Header with search and add camera button
         header_container = QWidget()
@@ -328,12 +327,6 @@ class LiveFeedScreen(QWidget):
         header_layout.setContentsMargins(0, 0, 0, 0)
         
         header_layout.addStretch()
-        
-        add_camera_btn = QPushButton("+ Add Camera")
-        add_camera_btn.setObjectName("addCameraButton")
-        add_camera_btn.setCursor(Qt.PointingHandCursor)
-        add_camera_btn.clicked.connect(self.show_add_camera_dialog)
-        header_layout.addWidget(add_camera_btn)
         
         content_layout.addWidget(header_container)
         
