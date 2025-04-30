@@ -193,13 +193,6 @@ class DashboardScreen(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
         main_layout.setSpacing(0)  # Remove spacing
         
-        """ # Create header with proper styling
-        header = HeaderWidget("Dashboard", "Add Camera")
-        header.setFixedHeight(70)  # Fixed height for header
-        header.set_search_box_visibility(True)
-        header.set_search_placeholder("Search cameras, alerts...")
-        main_layout.addWidget(header) """
-        
         # Create a scroll area for the dashboard content
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
