@@ -19,10 +19,10 @@ class HeaderWidget(QWidget):
     
     def init_ui(self):
         self.setObjectName("headerWidget")
-        self.setMinimumHeight(20)
+        self.setMinimumHeight(100)
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(20, 0, 20, 0)
+        layout.setContentsMargins(20, 10, 20, 10)
         
         self.title_label = QLabel(self.title)
         self.title_label.setObjectName("pageTitleLabel")
@@ -32,6 +32,7 @@ class HeaderWidget(QWidget):
         self.search_box = QLineEdit()
         self.search_box.setObjectName("searchBox")
         self.search_box.setPlaceholderText("Search...")
+        self.search_box.setMinimumWidth(200)
         self.search_box.textChanged.connect(self.on_search_text_changed)
         layout.addWidget(self.search_box)
         
