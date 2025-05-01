@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QToolButton, QLineEdit)
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent
 from PyQt5.QtGui import QPixmap, QIcon, QPainter, QColor, QPen
+import os
 
 from utils import format_relative_time
 
@@ -166,24 +167,23 @@ class Sidebar(QWidget):
         nav_layout.setSpacing(2)  # Reduced spacing
         
         # Create navigation buttons with icons
-        icon_size = QSize(20, 20)
-        
-        self.dashboard_btn = self.create_nav_button("dashboard", "Dashboard", "src/assets/icons/dashboard.png", icon_size)
+        icon_size = QSize(50,50)
+        self.dashboard_btn = self.create_nav_button("dashboard", "Dashboard", "/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/dashboard.png", icon_size)
         self.dashboard_btn.clicked.connect(self.on_dashboard_clicked)
         
-        self.live_feed_btn = self.create_nav_button("camera", "Live Feed", "src/assets/icons/camera.png", icon_size)
+        self.live_feed_btn = self.create_nav_button("camera", "Live Feed", "/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/live.png", icon_size)
         self.live_feed_btn.clicked.connect(self.on_live_feed_clicked)
         
-        self.playback_btn = self.create_nav_button("play", "Playback", "src/assets/icons/playback.png", icon_size) 
+        self.playback_btn = self.create_nav_button("play", "Playback", "/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/playback.png", icon_size) 
         self.playback_btn.clicked.connect(self.on_playback_clicked)
         
-        self.alerts_btn = self.create_nav_button("bell", "Alerts", "src/assets/icons/bell.png", icon_size)
+        self.alerts_btn = self.create_nav_button("bell", "Alerts", "/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/bell.png", icon_size)
         self.alerts_btn.clicked.connect(self.on_alerts_clicked)
         
-        self.user_mgmt_btn = self.create_nav_button("users", "User Management", "src/assets/icons/users.png", icon_size)
+        self.user_mgmt_btn = self.create_nav_button("users", "User Management", "/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/users.png", icon_size)
         self.user_mgmt_btn.clicked.connect(self.on_user_management_clicked)
         
-        self.settings_btn = self.create_nav_button("settings", "Settings", "src/assets/icons/settings.png", icon_size)
+        self.settings_btn = self.create_nav_button("settings", "Settings", "/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/settings.png", icon_size)
         self.settings_btn.clicked.connect(self.on_settings_clicked)
         
         # Add buttons to navigation layout
@@ -250,7 +250,7 @@ class Sidebar(QWidget):
             button.icon_label.setPixmap(custom_icon.pixmap(icon_size))
         
         # Make button smaller
-        button.setFixedHeight(40)
+        button.setFixedHeight(40) ## changed
         button.layout().setContentsMargins(15, 3, 15, 3)
         
         return button
@@ -287,94 +287,6 @@ class Sidebar(QWidget):
     
     def on_profile_clicked(self):
         self.profile_clicked.emit()
-
-""" class Sidebar(QWidget):
-    def __init__(self, username, first_name=None, last_name=None):
-        super().__init__()
-        self.username = username
-        self.first_name = first_name
-        self.last_name = last_name
-        self.init_ui()
-        
-    def init_ui(self):
-        #Initialize the UI components
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        
-        self.dashboard_button = self.create_menu_button("Dashboard", "dashboard", True)
-        self.live_feed_button = self.create_menu_button("Live Feed", "camera")
-        self.playback_button = self.create_menu_button("Playback", "play")
-        self.alerts_button = self.create_menu_button("Alerts", "bell")
-        self.user_management_button = self.create_menu_button("User Management", "users")
-        self.settings_button = self.create_menu_button("Settings", "settings")
-        
-        layout.addWidget(self.dashboard_button)
-        layout.addWidget(self.live_feed_button)
-        layout.addWidget(self.playback_button)
-        layout.addWidget(self.alerts_button)
-        layout.addWidget(self.user_management_button)
-        layout.addWidget(self.settings_button)
-        
-        layout.addStretch()
-        
-        user_info = QWidget()
-        user_layout = QHBoxLayout(user_info)
-        
-        user_avatar = QLabel()
-        user_avatar.setFixedSize(30, 30)
-        user_avatar.setScaledContents(True)
-        user_avatar.setObjectName("userAvatar")
-        
-        default_avatar = QPixmap("assets/default_profile.svg")
-        user_avatar.setPixmap(default_avatar)
-        
-        display_name = f"{self.first_name or ''} {self.last_name or ''}".strip() or self.username
-        user_name = QLabel(display_name)
-        user_name.setObjectName("userName")
-        
-        user_settings = QToolButton()
-        user_settings.setIcon(QIcon.fromTheme("settings"))
-        user_settings.setAutoRaise(True)
-        
-        user_layout.addWidget(user_avatar)
-        user_layout.addWidget(user_name)
-        user_layout.addStretch()
-        user_layout.addWidget(user_settings)
-        
-        view_profile = QPushButton("View profile")
-        view_profile.setObjectName("linkButton")
-        view_profile.setFlat(True)
-        
-        user_container = QVBoxLayout()
-        user_container.addWidget(user_info)
-        user_container.addWidget(view_profile)
-        
-        layout.addLayout(user_container)
-        
-        self.setFixedWidth(200)
-        self.setObjectName("sidebar")
-
-    def create_menu_button(self, text, icon_name, is_active=False):
-        #Crée un bouton de menu pour la sidebar
-        button = QPushButton(text)
-        button.setIcon(QIcon.fromTheme(icon_name))
-        button.setIconSize(QSize(20, 20))
-        button.setCheckable(True)
-        button.setChecked(is_active)
-        button.setObjectName("sidebarButton")
-        button.setStyleSheet(
-            QPushButton {
-                padding: 10px;
-                text-align: left;
-                border-radius: 5px;
-            }
-            QPushButton[active="true"] {
-                background-color: #E3F2FD;
-                color: #1E88E5;
-            }
-)
-        return button """
 
 class CameraWidget(QFrame):
     def __init__(self, camera):
