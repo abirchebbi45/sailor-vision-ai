@@ -164,8 +164,18 @@ class AlertService:
                 
                 for detection in alert_data['detections']:
                     try:
+                        class_mapping = {
+                            "swimmer": AlertType.UNAUTHORIZED_SWIMMER.value,
+                            "swimmer with life jacket": AlertType.SAFETY_COMPLIANT_SWIMMER.value,
+                            "boat": AlertType.VESSEL_DETECTED.value,
+                            "life jacket": AlertType.LIFE_JACKET_DETECTED.value,
+                        }
+
+                        detection_class = detection['class']
+                        alert_type = class_mapping.get(detection_class, AlertType.GENERAL_DETECTION.value)
+
                         alert = Alert(
-                            type=AlertType.GENERAL_DETECTION.value,
+                            type=alert_type,
                             camera_id=camera_id,
                             message=f"{detection['class']} detected (Confidence: {detection['confidence']:.2f})",
                             timestamp=datetime.fromtimestamp(float(detection['timestamp'])),
