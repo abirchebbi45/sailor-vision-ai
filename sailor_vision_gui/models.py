@@ -105,6 +105,7 @@ class Alert(Base):
     is_archived = Column(Boolean, default=False)
     image_data = Column(String)  # Path to snapshot image
     detection_class = Column(String(50), default='non spécifié')
+    notes = Column(Text, nullable=True)
     
     # Relationships
     camera = relationship("Camera", back_populates="alerts")
