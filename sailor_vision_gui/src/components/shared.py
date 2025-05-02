@@ -8,42 +8,54 @@ import os
 
 from utils import format_relative_time
 
+
+
 class HeaderWidget(QWidget):
     search_text_changed = pyqtSignal(str)
     action_button_clicked = pyqtSignal()
-    
-    def __init__(self, title="", action_button_text="", parent=None):
+
+    def __init__(
+        self,
+        title: str = "",
+        action_button_text: str = "",
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.title = title
         self.action_button_text = action_button_text
         self.init_ui()
-    
+
     def init_ui(self):
         self.setObjectName("headerWidget")
-        self.setMinimumHeight(100)
-        
+        self.setFixedHeight(100)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(20, 10, 20, 10)
-        
+        layout.setContentsMargins(15, 0, 15, 0)
+
+        # — Titre —
         self.title_label = QLabel(self.title)
         self.title_label.setObjectName("pageTitleLabel")
+        self.title_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         layout.addWidget(self.title_label)
+
         layout.addStretch()
-        
+
+        # — Search box —
         self.search_box = QLineEdit()
         self.search_box.setObjectName("searchBox")
         self.search_box.setPlaceholderText("Search...")
-        self.search_box.setMinimumWidth(200)
+        self.search_box.setFixedHeight(30)
         self.search_box.textChanged.connect(self.on_search_text_changed)
         layout.addWidget(self.search_box)
-        
+
+        # — Bouton d’action (optionnel) —
         if self.action_button_text:
-            self.action_button = QPushButton(self.action_button_text)
-            self.action_button.setObjectName("actionButton")
-            self.action_button.setCursor(Qt.PointingHandCursor)
-            self.action_button.clicked.connect(self.on_action_button_clicked)
-            layout.addWidget(self.action_button)
-        
+            btn = QPushButton(self.action_button_text)
+            btn.setObjectName("actionButton")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setFixedHeight(30)
+            btn.clicked.connect(self.on_action_button_clicked)
+            layout.addWidget(btn)
+
         self.setLayout(layout)
     
     def set_title(self, title):
@@ -152,7 +164,7 @@ class Sidebar(QWidget):
         logo_label = QLabel()
         logo_label.setFixedSize(140, 50)
         logo_label.setScaledContents(True)
-        logo_icon = QIcon("src/assets/Sailor vision logo_.png")
+        logo_icon = QIcon("/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/Sailor vision logo.png")
         logo_pixmap = logo_icon.pixmap(QSize(140, 50))
         logo_label.setPixmap(logo_pixmap)
         logo_layout.addWidget(logo_label, 0, Qt.AlignCenter)
