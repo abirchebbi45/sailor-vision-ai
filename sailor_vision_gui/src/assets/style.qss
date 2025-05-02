@@ -20,6 +20,10 @@ QWidget#central_widget {
 }
 
 /* Sidebar styles */
+#Sidebar {
+    background-color: white;
+    border-right: 1px solid #e0e0e0;
+}
 
 #logoContainer {
     background-color: transparent;
@@ -27,17 +31,52 @@ QWidget#central_widget {
     padding: 10px 0;
 }
 
-QPushButton#NavButton {
-    border: none;
-    border-radius: 5px;
-    padding: 10px;
-    margin: 2px 8px;
+#sidebarButton {
     text-align: left;
+    padding: 12px 15px;
+    border: none;
     background-color: transparent;
+    font-size: 14px;
+    border-radius: 0;
 }
 
-#NavButton:hover {
-    background-color: #f0f0f0;
+#sidebarButton:hover {
+    background-color: #f5f5f5;
+}
+
+#sidebarButton[active=true] {
+    background-color: #E3F2FD;
+    color: #1E88E5;
+    font-weight: bold;
+}
+
+#userProfileContainer {
+    border-top: 1px solid #e0e0e0;
+    background-color: white;
+}
+
+#userAvatar {
+    background-color: #E3F2FD;
+    border-radius: 18px;
+}
+
+#userName {
+    font-weight: bold;
+    color: #333333;
+}
+
+#linkButton {
+    color: #1E88E5;
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    text-decoration: underline;
+    font-size: 12px;
+}
+
+#navigationList {
+    margin-top: 5px;
 }
 
 /* Header styles */
@@ -45,7 +84,7 @@ QPushButton#NavButton {
     background-color: white;
     border-bottom: 1px solid #e0e0e0;
     padding: 10px 0;
-    height: 60px;
+    height: 30px;
 }
 #pageTitleLabel {
     font-size: 20px;
@@ -100,16 +139,7 @@ QWidget#AlertsContainer {
     margin-bottom: 15px;
 }
 
-#acknowledgeButton {
-    background-color: #2196F3;
-    color: white;
-    border-radius: 4px;
-    padding: 6px 12px;
-    border: none;
-}
-#acknowledgeButton:hover {
-    background-color: #1976D2;
-}
+
 
 /* System status widget */
 
@@ -325,6 +355,35 @@ QWidget {
     font-size: 12px;
 }
 
+#alertItem {
+  background-color: rgba(240,240,245,0.7);
+  border: 1px solid rgba(220,220,225,0.9);
+  border-radius: 8px;
+}
+#alertType {
+  font-size: 13px;
+  color: #333;
+}
+#alertDescription {
+  font-size: 11px;
+  color: #555;
+}
+#alertTimestamp {
+  font-size: 10px;
+  color: #777;
+}
+#acknowledgeButton {
+  background-color: #2196F3;
+    border: 1px solid #1E88E5;
+    border-radius: 4px;
+    padding: 8px 12px;
+    min-width: 90px;
+}
+#acknowledgeButton:hover {
+  background-color: #1976D2;
+}
+
+
 /* Recording styles */
 #recordingItem {
     background-color: #ffffff;
@@ -539,17 +598,18 @@ QPushButton:disabled {
     max-width: 220px;
 }
 
-
-
 #navigationList QWidget {
     background-color: transparent;
     padding: 10px 0;
 }
 
 #NavButton {
+    border: none;
     border-radius: 4px;
-    padding: 8px 12px;
-    margin: 2px 8px;
+    padding: 8px 0;
+    margin: 2px 0;
+    text-align: left;
+    background-color: transparent;
 }
 
 .NavButton:hover {
@@ -558,8 +618,18 @@ QPushButton:disabled {
 }
 
 #NavButton[active="true"] {
-    background-color: #E3F2FD;
-    color: #1E88E5;
+    color: #219ebc;
+    background-color: transparent;
+    border-left: 3px solid #219ebc;
+}
+
+#navigationList {
+    background-color: transparent;
+    margin: 0;
+    padding: 0;
+}
+#navigationList QWidget {
+    background-color: transparent;
 }
 
 .NavButton QLabel {
@@ -834,6 +904,24 @@ QProgressBar::chunk {
 .SystemAlert {
     border-left: 4px solid #9c27b0;
 }
+
+QDialog#AlertDetailsDialog {
+    background-color: white;
+    border-radius: 8px;
+}
+
+QLabel#dialogTitle {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+QTextEdit {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 13px;
+}
+
 
 /* Dialog Boxes */
 QDialog {
