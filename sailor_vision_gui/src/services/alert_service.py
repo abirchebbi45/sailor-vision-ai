@@ -146,6 +146,24 @@ class AlertService:
             return None
         finally:
             close_session(session)
+
+    def save_alert_notes(self, alert_id, notes):
+        session = get_session()
+        try:
+            alert = session.query(Alert).filter_by(id=alert_id).first()
+            if alert:
+                alert.notes = notes
+                session.commit()
+                return True
+            return False
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to save notes: {e}")
+            return False
+        finally:
+            close_session(session)
+
+
     
     def process_yolo_detection(self, alert_data):
         """Process YOLO detections and create alerts"""
