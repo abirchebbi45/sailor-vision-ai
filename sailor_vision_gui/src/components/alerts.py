@@ -186,6 +186,7 @@ class AlertsScreen(QWidget):
         # Load initial data
         self.load_alerts()
         self.load_alert_history()
+        self.apply_history_filters()
     
     def init_ui(self):
         """Initialize the UI components"""
@@ -232,23 +233,26 @@ class AlertsScreen(QWidget):
         filter_layout.setContentsMargins(0, 10, 0, 15)
         
         # Date filter
-        date_edit = QDateEdit()
-        date_edit.setCalendarPopup(True)
-        date_edit.setDate(QDate.currentDate())
-        date_edit.setObjectName("dateFilter")
-        date_edit.setFixedWidth(180)
-        date_edit.setDisplayFormat("dd/MM/yyyy")
-        filter_layout.addWidget(date_edit)
-        
-        # Type filter
-        type_combo = QComboBox()
-        type_combo.setObjectName("typeFilter")
-        type_combo.addItem("Type")
+        self.date_filter = QDateEdit()
+        self.date_filter.setCalendarPopup(True)
+        self.date_filter.setDate(QDate.currentDate())
+        self.date_filter.setObjectName("dateFilter")
+        self.date_filter.setFixedWidth(180)
+        self.date_filter.setDisplayFormat("dd/MM/yyyy")
+        # Dès qu’on change la date, on réapplique les filtres :
+        self.date_filter.dateChanged.connect(self.apply_history_filters)
+
+        self.type_filter = QComboBox()
+        self.type_filter.setObjectName("typeFilter")
+        self.type_filter.addItem("Type")
         for alert_type in AlertType:
-            if hasattr(alert_type, "value"):
-                type_combo.addItem(alert_type.value)
-        type_combo.setFixedWidth(180)
-        filter_layout.addWidget(type_combo)
+            self.type_filter.addItem(alert_type.value)
+        self.type_filter.setFixedWidth(180)
+        # Dès qu’on change la sélection, on réapplique :
+        self.type_filter.currentIndexChanged.connect(self.apply_history_filters)
+
+        filter_layout.addWidget(self.date_filter)
+        filter_layout.addWidget(self.type_filter)
         
         # Spacer
         filter_layout.addStretch()
@@ -493,3 +497,36 @@ class AlertsScreen(QWidget):
                 QMessageBox.information(self, "Export Successful", f"History successfully exported to:\n{file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Export Error", f"Error during export:\n{str(e)}")
+    
+    def apply_history_filters(self):
+            """Filtrer l’historique selon date & type, et recharger la liste."""
+            all_history = self.alert_service.get_alert_history()
+            sel_date = self.date_filter.date().toPyDate()
+            sel_type = self.type_filter.currentText()
+
+            def keep(a):
+                # filtre date
+                if a.timestamp.date() != sel_date:
+                    return False
+                # filtre type
+                if sel_type != "Type":
+                    txt = a.type if isinstance(a.type, str) else a.type.value
+                    if txt != sel_type:
+                        return False
+                return True
+
+            filtered = [a for a in all_history if keep(a)]
+
+            # on repeuple la zone d’historique
+            self.clear_layout(self.history_list)
+            if filtered:
+                for alert in filtered:
+                    w = AlertItem(alert, show_actions=False, show_details=True)
+                    w.details_clicked.connect(self.show_alert_details)
+                    self.history_list.addWidget(w)
+            else:
+                no = QLabel("No alert history available")
+                no.setObjectName("emptyStateMessage")
+                no.setAlignment(Qt.AlignCenter)
+                self.history_list.addWidget(no)
+
