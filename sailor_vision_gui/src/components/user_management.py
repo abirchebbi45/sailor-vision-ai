@@ -242,8 +242,8 @@ class UserManagementScreen(QWidget):
         # Container for users grid
         self.users_container = QWidget()
         self.users_layout = QGridLayout(self.users_container)
-        self.users_layout.setContentsMargins(20, 20, 20, 20)
-        self.users_layout.setSpacing(100)
+        self.users_layout.setContentsMargins(20, 0, 20, 20)
+        self.users_layout.setSpacing(20)
         
         scroll_area.setWidget(self.users_container)
         layout.addWidget(scroll_area)
