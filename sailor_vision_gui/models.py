@@ -17,6 +17,9 @@ class AlertType(enum.Enum):
     CAMERA_OFFLINE = "Camera Offline"
     VESSEL_DETECTED = "Vessel Detected"
     SYSTEM_ERROR = "System Error"
+    UNAUTHORIZED_SWIMMER = "Unauthorized Swimmer"
+    SAFETY_COMPLIANT_SWIMMER = "Swimmer with Life Jacket"
+    LIFE_JACKET_DETECTED = "Unattended Life Jacket"
 
 class StorageType(enum.Enum):
     LOCAL = "Local"
