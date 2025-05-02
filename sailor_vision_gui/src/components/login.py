@@ -333,12 +333,6 @@ class LoginScreen(QWidget):
         login_layout.addWidget(login_button)
         
         main_layout.addWidget(login_container, alignment=Qt.AlignCenter)
-        
-        attribution = QLabel("Made with Visily")
-        attribution.setObjectName("attribution")
-        attribution.setAlignment(Qt.AlignCenter)
-        main_layout.addWidget(attribution)
-        
         self.setLayout(main_layout)
         self.email_input.setFocus()
         
