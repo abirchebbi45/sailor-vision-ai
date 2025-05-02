@@ -90,7 +90,11 @@ class MainWindow(QMainWindow):
         content_layout.setSpacing(0)
 
         # Header
-        self.header = HeaderWidget("Dashboard")
+        self.header = HeaderWidget(
+            title="Dashboard",
+            action_button_text="", 
+            parent=None
+        )
         content_layout.addWidget(self.header)
 
         # Stacked Widget for screens
@@ -138,43 +142,73 @@ class MainWindow(QMainWindow):
 
     def switch_view(self, title, widget):
         """Change active view"""
-        if widget:
-            self.header.set_title(title)
-            self.stacked_widget.setCurrentWidget(widget)
-            
-            # Configure search based on view
-            if title == "Dashboard":
-                self.header.set_search_box_visibility(True)
-                self.header.set_search_placeholder("Search cameras, alerts...")
-                self.header.search_text_changed.disconnect() if hasattr(self.header, "_dashboard_disconnect_id") else None
-                """ self.header._disconnect_id = self.header.search_text_changed.connect(self.dashboard_screen.filter_items) """
-            elif title == "Live Feed":
-                self.header.set_search_box_visibility(True)
-                self.header.set_search_placeholder("Search cameras...")
-                """ self.header.search_text_changed.disconnect() if hasattr(self.header, "_live_feed_disconnect_id") else None 
-                self.header._live_feed_disconnect_id = self.header.search_text_changed.connect(self.live_feed_screen.filter_cameras) """
-                
-                self.header.set_action_button("Add Camera", True)
-                self.header.action_button_clicked.disconnect() if hasattr(self.header, "_action_disconnect_id") else None
-                self.header._action_disconnect_id = self.header.action_button_clicked.connect(self.live_feed_screen.show_add_camera_dialog)
-
-            elif title == "User Management":
-                self.header.set_search_box_visibility(True)
-                self.header.set_search_placeholder("Search users...")
-                self.header.search_text_changed.disconnect() if hasattr(self.header, "_disconnect_id") else None
-                # Connecter à la fonction de filtrage des utilisateurs
-                self.header._disconnect_id = self.header.search_text_changed.connect(self.user_management_screen.filter_users)
-                # Configurer le bouton d'action pour ajouter un utilisateur
-                self.header.set_action_button("Add User", True)
-                self.header.action_button_clicked.disconnect() if hasattr(self.header, "_action_disconnect_id") else None
-                self.header._action_disconnect_id = self.header.action_button_clicked.connect(self.user_management_screen.on_add_user_clicked)
-            else:
-                # Other views may have different search needs
-                self.header.set_search_box_visibility(True)
-                self.header.set_search_placeholder(f"Search {title.lower()}...")
-                self.header.set_action_button("", False)  # Désactiver le bouton d'action par défaut
-        else:
+        if not widget:
             logger.warning(f"Screen '{title}' not implemented")
+            return
+
+        # Afficher la nouvelle page
+        self.header.set_title(title)
+        self.stacked_widget.setCurrentWidget(widget)
+
+        # 1) Déconnecter et cacher systématiquement l’ancien bouton d’action
+        try:
+            self.header.action_button_clicked.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        self.header.set_action_button("", visible=False)
+
+        # 2) Déconnecter l’ancien handler de recherche (si utilisé)
+        try:
+            self.header.search_text_changed.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+
+        # 3) Configuration spécifique à chaque écran
+        if title == "Dashboard":
+            self.header.set_search_box_visibility(True)
+            self.header.set_search_placeholder("Search cameras, alerts...")
+            # Si vous avez un filtre à connecter :
+            # self.header.search_text_changed.connect(self.dashboard_screen.filter_items)
+
+        elif title == "Live Feed":
+            self.header.set_search_box_visibility(True)
+            self.header.set_search_placeholder("Search cameras...")
+            # Réactiver le bouton "Add Camera"
+            self.header.set_action_button("Add Camera", visible=True)
+            self.header.action_button_clicked.connect(
+                self.live_feed_screen.show_add_camera_dialog
+            )
+
+        elif title == "Alerts":
+            # Affiche la searchbox et change le placeholder
+            self.header.set_search_box_visibility(True)
+            self.header.set_search_placeholder("Search alerts…")
+
+            # Déconnecte les anciennes connexions et connecte au filtre
+            try: self.header.search_text_changed.disconnect()
+            except: pass
+            self.header.search_text_changed.connect(self.alerts_screen.filter_alerts)
+
+            # Pas de bouton d’action ici
+            self.header.set_action_button("", False)
+
+        elif title == "User Management":
+            self.header.set_search_box_visibility(True)
+            self.header.set_search_placeholder("Search users...")
+            # Bouton "Add User"
+            self.header.set_action_button("Add User", visible=True)
+            self.header.action_button_clicked.connect(
+                self.user_management_screen.on_add_user_clicked
+            )
+            # Filtre de recherche pour les utilisateurs
+            self.header.search_text_changed.connect(self.user_management_screen.filter_users)
+
+        else:
+            # Écrans futurs
+            self.header.set_search_box_visibility(True)
+            self.header.set_search_placeholder(f"Search {title.lower()}…")
+            # aucun bouton d’action par défaut
+
 
     def clear_layout(self, layout):
         """Recursively clear a layout"""
@@ -190,9 +224,9 @@ def setup_fonts():
     """Configure application fonts"""
     font_db = QFontDatabase()
     try:
-        font_db.addApplicationFont("assets/fonts/Inter-Regular.ttf")
-        font_db.addApplicationFont("assets/fonts/Inter-Bold.ttf")
-        font_db.addApplicationFont("assets/fonts/Inter-Medium.ttf")
+        font_db.addApplicationFont("/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/fonts/Inter-Regular.ttf")
+        font_db.addApplicationFont("/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/fonts/Inter-Bold.ttf")
+        font_db.addApplicationFont("/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/fonts/Inter-Medium.ttf")
         app_font = QFont("Inter")
         app_font.setPixelSize(14)  # Base font size
     except Exception as e:
@@ -208,9 +242,7 @@ def main():
     ros_node = Node('sailor_vision_bridge')
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    
-    # Create font and asset directories if they don't exist
-    os.makedirs("assets/fonts", exist_ok=True)
+
     
     # Setup style
     style_path = os.path.join(os.path.dirname(__file__), "src", "assets", "style.qss")
