@@ -26,9 +26,9 @@ DEFAULT_CONFIG = {
         "host": os.getenv("PGHOST", "localhost"),
         "port": os.getenv("PGPORT", "5432"),
         "user": os.getenv("PGUSER", "postgres"),
-        "password": os.getenv("PGPASSWORD", ""),
+        "password": os.getenv("PGPASSWORD", "admin123"),
         "database": os.getenv("PGDATABASE", "sailorvision"),
-        "url": os.getenv("DATABASE_URL", "postgresql://postgres:@localhost:5432/sailorvision")
+        "url": os.getenv("DATABASE_URL", "postgresql://postgres:admin123@localhost:5432/sailorvision")
     },
     "app": {
         "name": "SailorVision",

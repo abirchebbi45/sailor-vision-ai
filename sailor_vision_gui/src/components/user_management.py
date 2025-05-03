@@ -3,6 +3,9 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QDialog, QLineEdit, QComboBox, QMessageBox)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap, QIcon
+from PyQt5.QtWidgets import QLayout, QSizePolicy
+from PyQt5.QtCore import QRect, QSize, QPoint
+
 
 from src.services.user_service import UserService
 from src.components.shared import HeaderWidget, UserCard
@@ -21,12 +24,12 @@ class UserDialog(QDialog):
         
         self.init_ui()
         
-        # If editing user, populate fields
+        # If editing a user, populate the fields with existing data
         if self.user:
             self.populate_fields()
     
     def init_ui(self):
-        """Initialize dialog UI"""
+        """Initialize the dialog's user interface, including input fields and buttons."""
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
         
@@ -137,7 +140,7 @@ class UserDialog(QDialog):
         layout.addLayout(buttons_layout)
     
     def populate_fields(self):
-        """Populate the input fields with the user's existing data."""
+        """Populate the input fields with the user's existing data for editing."""
         if not self.user:
             return
         
@@ -154,7 +157,7 @@ class UserDialog(QDialog):
                 self.role_combo.setCurrentIndex(index)
     
     def save_user(self):
-        """Save the user data to the database."""
+        """Save the user data to the database, either creating a new user or updating an existing one."""
         # Validate input
         if not self.validate_input():
             return
@@ -189,7 +192,7 @@ class UserDialog(QDialog):
             QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
     
     def validate_input(self):
-        """Validate the user input fields before saving."""
+        """Validate the user input fields to ensure all required data is provided and correct."""
         # Check required fields
         if not self.username_input.text().strip():
             QMessageBox.warning(self, "Validation Error", "Username is required.")
@@ -223,52 +226,39 @@ class UserManagementScreen(QWidget):
         
         self.init_ui()
         
-        # Load initial data
+        # Load initial user data into the interface
         self.load_users()
     
     def init_ui(self):
-        """Initialize the main user management screen UI components."""
-        # Main layout
+        """Initialize the main user management screen layout and components."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
-        # Create scroll area for users grid
+
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setFrameShape(QFrame.NoFrame)
-        
-        # Container for users grid
+
         self.users_container = QWidget()
-        self.users_layout = QGridLayout(self.users_container)
-        self.users_layout.setContentsMargins(20, 0, 20, 20)
-        self.users_layout.setSpacing(20)
-        
+        self.users_layout = FlowLayout(self.users_container, margin=20, spacing=12)
+
+
         scroll_area.setWidget(self.users_container)
         layout.addWidget(scroll_area)
     
     def load_users(self):
-        """Load all users from the service and display them in the grid."""
-        # Clear existing user cards
+        """Load all users from the database and display them as user cards."""
         self.clear_layout(self.users_layout)
-        
-        # Get all users from service
         users = self.user_service.get_all_users()
-        
-        # Add user cards to grid
-        for i, user in enumerate(users):
-            row = i // 3
-            col = i % 3
-            
-            user_card = UserCard(user)
-            user_card.edit_clicked.connect(self.show_edit_user_dialog)
-            user_card.delete_clicked.connect(self.confirm_delete_user)
-            
-            self.users_layout.addWidget(user_card, row, col)
+        for user in users:
+            card = UserCard(user)
+            card.edit_clicked.connect(self.show_edit_user_dialog)
+            card.delete_clicked.connect(self.confirm_delete_user)
+            self.users_layout.addWidget(card)
     
     def show_add_user_dialog(self):
-        """Open a dialog to add a new user."""
+        """Open a dialog to add a new user and refresh the user list upon success."""
         dialog = UserDialog(parent=self)
         
         if dialog.exec_() == QDialog.Accepted:
@@ -276,7 +266,7 @@ class UserManagementScreen(QWidget):
             self.load_users()
     
     def show_edit_user_dialog(self, user_id):
-        """Open a dialog to edit an existing user's details."""
+        """Open a dialog to edit an existing user's details and refresh the user list upon success."""
         user = self.user_service.get_user(user_id)
         if user:
             dialog = UserDialog(user, parent=self)
@@ -286,7 +276,7 @@ class UserManagementScreen(QWidget):
                 self.load_users()
     
     def confirm_delete_user(self, user_id):
-        """Prompt the user for confirmation before deleting a user."""
+        """Prompt the user for confirmation before deleting a user and refresh the list upon success."""
         user = self.user_service.get_user(user_id)
         if not user:
             return
@@ -308,11 +298,11 @@ class UserManagementScreen(QWidget):
                 QMessageBox.critical(self, "Error", "Failed to delete user.")
     
     def on_add_user_clicked(self):
-        """Handle the action when the 'Add User' button is clicked."""
+        """Handle the action when the 'Add User' button is clicked by opening the add user dialog."""
         self.show_add_user_dialog()
 
     def filter_users(self, search_text):
-        """Filter the displayed users based on the search text."""
+        """Filter the displayed users based on the search text entered by the user."""
         if not search_text:
             # If the search text is empty, show all users.
             for i in range(self.users_layout.count()):
@@ -338,7 +328,7 @@ class UserManagementScreen(QWidget):
                     widget.setVisible(False)
         
     def clear_layout(self, layout):
-        """Remove all widgets from the given layout."""
+        """Remove all widgets from the given layout to prepare for reloading data."""
         if layout is None:
             return
         
@@ -350,3 +340,76 @@ class UserManagementScreen(QWidget):
                 widget.deleteLater()
             else:
                 self.clear_layout(item.layout())
+    
+    # user_management.py (before the UserManagementScreen class)
+
+class FlowLayout(QLayout):
+    def __init__(self, parent=None, margin=0, spacing=8):
+        super().__init__(parent)
+        self.setContentsMargins(margin, margin, margin, margin)
+        self._spacing = spacing
+        self._items = []
+
+    def addItem(self, item):
+        """Add a new item to the layout."""
+        self._items.append(item)
+    
+    def count(self):
+        """Return the number of items in the layout."""
+        return len(self._items)
+    
+    def itemAt(self, idx):
+        """Return the item at the specified index."""
+        return self._items[idx] if 0 <= idx < len(self._items) else None
+    
+    def takeAt(self, idx):
+        """Remove and return the item at the specified index."""
+        return self._items.pop(idx) if 0 <= idx < len(self._items) else None
+
+    def expandingDirections(self):
+        """Specify that the layout does not expand in any direction."""
+        return Qt.Orientations()
+    
+    def hasHeightForWidth(self):
+        """Indicate that the layout adapts its height based on its width."""
+        return True
+    
+    def heightForWidth(self, width):
+        """Calculate the height required for the given width."""
+        return self.doLayout(QRect(0, 0, width, 0), True)
+
+    def setGeometry(self, rect):
+        """Set the geometry of the layout and arrange its items."""
+        super().setGeometry(rect)
+        self.doLayout(rect, False)
+
+    def sizeHint(self):
+        """Provide a size hint for the layout."""
+        return self.minimumSize()
+    
+    def minimumSize(self):
+        """Calculate the minimum size required for the layout."""
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        size += QSize(margins.left()+margins.right(),
+                      margins.top()+margins.bottom())
+        return size
+
+    def doLayout(self, rect, testOnly):
+        """Arrange the items within the given rectangle."""
+        x, y = rect.x(), rect.y()
+        lineHeight = 0
+        for item in self._items:
+            w = item.sizeHint().width()
+            h = item.sizeHint().height()
+            if x + w > rect.right() and lineHeight > 0:
+                x = rect.x()
+                y += lineHeight + self._spacing
+                lineHeight = 0
+            if not testOnly:
+                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+            x += w + self._spacing
+            lineHeight = max(lineHeight, h)
+        return y + lineHeight - rect.y() + self.contentsMargins().bottom()

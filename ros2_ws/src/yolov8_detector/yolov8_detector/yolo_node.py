@@ -21,7 +21,7 @@ class YoloNode(Node):
         self.timer = self.create_timer(1 / 30.0, self.timer_callback)
         self.cap = cv2.VideoCapture('/home/abirc240/Desktop/sailor-vision-ai/testing_video/Swim_video_with_life Jacket.mp4')
 
-        self.confidence_threshold = 0.2
+        self.confidence_threshold = 0.5
         self.alert_classes = self.model.names.values() 
 
         if not self.cap.isOpened():
