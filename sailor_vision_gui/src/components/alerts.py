@@ -72,7 +72,7 @@ class AlertDetailsDialog(QDialog):
 
         btn_save_notes = QPushButton("Save Notes")
         btn_save_notes.setObjectName("secondaryButton")
-        btn_save_notes.clicked.connect(self.save_notes)  # ✅ Connecter ici
+        btn_save_notes.clicked.connect(self.save_notes)
 
         btn_email = QPushButton("Send by Email")
         btn_email.setObjectName("secondaryButton")
@@ -122,7 +122,7 @@ class AlertsScreen(QWidget):
         self.apply_history_filters()
     
     def init_ui(self):
-        """Initialize the UI components"""
+        """Initialize the user interface components for the Alerts screen."""
         # Main layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -136,7 +136,6 @@ class AlertsScreen(QWidget):
         
         # Real-time alerts section
         rt_alerts_section = SectionFrame()
-        #rt_alerts_section.setObjectName("contentSection")
         rt_alerts_layout = QVBoxLayout(rt_alerts_section)
         rt_alerts_layout.setContentsMargins(15, 15, 15, 15)
         
@@ -153,7 +152,6 @@ class AlertsScreen(QWidget):
         
         # Alert history section
         history_section = SectionFrame()
-        #history_section.setObjectName("contentSection")
         history_layout = QVBoxLayout(history_section)
         history_layout.setContentsMargins(15, 15, 15, 15)
         
@@ -172,7 +170,6 @@ class AlertsScreen(QWidget):
         self.date_filter.setObjectName("dateFilter")
         self.date_filter.setFixedWidth(180)
         self.date_filter.setDisplayFormat("dd/MM/yyyy")
-        # Dès qu’on change la date, on réapplique les filtres :
         self.date_filter.dateChanged.connect(self.apply_history_filters)
 
         self.type_filter = QComboBox()
@@ -181,7 +178,6 @@ class AlertsScreen(QWidget):
         for alert_type in AlertType:
             self.type_filter.addItem(alert_type.value)
         self.type_filter.setFixedWidth(180)
-        # Dès qu’on change la sélection, on réapplique :
         self.type_filter.currentIndexChanged.connect(self.apply_history_filters)
 
         filter_layout.addWidget(self.date_filter)
@@ -276,7 +272,7 @@ class AlertsScreen(QWidget):
         layout.addWidget(scroll_area)
     
     def create_page_button(self, text, is_active=False):
-        """Create a pagination button"""
+        """Create a pagination button with optional active state."""
         btn = QPushButton(text)
         btn.setFixedSize(32, 32)
         
@@ -288,7 +284,7 @@ class AlertsScreen(QWidget):
         return btn
     
     def load_alerts(self):
-        """Load and display real-time alerts"""
+        """Load and display real-time alerts from the alert service."""
         # Clear existing alerts
         self.clear_layout(self.rt_alerts_list)
         
@@ -311,7 +307,7 @@ class AlertsScreen(QWidget):
             self.rt_alerts_list.addWidget(no_alerts)
     
     def load_alert_history(self):
-        """Load and display the alert history"""
+        """Load and display the alert history from the alert service."""
         # Clear existing history
         self.clear_layout(self.history_list)
         
@@ -333,7 +329,7 @@ class AlertsScreen(QWidget):
             self.history_list.addWidget(no_history)
     
     def acknowledge_alert(self, alert_id):
-        """Acknowledge an alert"""
+        """Mark an alert as acknowledged and refresh the UI."""
         user_id = self.user_data.get('id') if self.user_data else None
         success = self.alert_service.acknowledge_alert(alert_id, user_id)
         if success:
@@ -342,7 +338,7 @@ class AlertsScreen(QWidget):
             self.load_alert_history()
     
     def archive_alert(self, alert_id):
-        """Archive an alert"""
+        """Archive an alert and refresh the UI."""
         success = self.alert_service.archive_alert(alert_id)
         if success:
             # Reload alerts
@@ -350,14 +346,14 @@ class AlertsScreen(QWidget):
             self.load_alert_history()
     
     def show_alert_details(self, alert_id):
-        """Display details of a specific alert"""
+        """Open a dialog to display detailed information about a specific alert."""
         alert = self.alert_service.get_alert(alert_id)
         if alert:
             dialog = AlertDetailsDialog(alert, self)
             dialog.exec_()
     
     def on_alert_received(self, alert_data):
-        """Handle incoming ROS2 alert data (in a ROS thread)"""
+        """Handle incoming alert data from the ROS bridge."""
         try:
             # Transfer processing to the main thread
             QTimer.singleShot(0, lambda: self._handle_alert(alert_data))
@@ -365,7 +361,7 @@ class AlertsScreen(QWidget):
             logger.error(f"Error transferring thread: {e}")
 
     def _handle_alert(self, alert_data):
-        """Executed in the Qt main thread"""
+        """Process alert data in the main thread and update the UI."""
         try:
             logger.info(f"Processing data: {json.dumps(alert_data)[:200]}...")  # Safe logging
             
@@ -388,7 +384,7 @@ class AlertsScreen(QWidget):
             logger.error(traceback.format_exc())  # Full stack trace
 
     def clear_layout(self, layout):
-        """Clear the contents of a layout"""
+        """Clear all widgets and layouts from a given layout."""
         while layout.count():
             item = layout.takeAt(0)
             widget = item.widget()
@@ -398,7 +394,7 @@ class AlertsScreen(QWidget):
                 self.clear_layout(item.layout())
     
     def closeEvent(self, event):
-        """Handle window close event"""
+        """Handle the window close event by stopping services and cleaning up."""
         logger.info("Closing AlertsScreen and stopping services")
         self.alert_bridge.stop()
         event.accept()
@@ -408,7 +404,7 @@ class AlertsScreen(QWidget):
         self.alert_service.close_db()
     
     def export_alert_history(self):
-        """Export the alert history to a CSV file"""
+        """Export the alert history to a CSV file."""
         file_path, _ = QFileDialog.getSaveFileName(self, "Save File", "", "CSV Files (*.csv)")
         
         if file_path:
@@ -432,49 +428,49 @@ class AlertsScreen(QWidget):
                 QMessageBox.critical(self, "Export Error", f"Error during export:\n{str(e)}")
     
     def apply_history_filters(self):
-            """Filtrer l’historique selon date & type, et recharger la liste."""
-            all_history = self.alert_service.get_alert_history()
-            sel_date = self.date_filter.date().toPyDate()
-            sel_type = self.type_filter.currentText()
+        """Filter the alert history based on selected date and type, then refresh the list."""
+        all_history = self.alert_service.get_alert_history()
+        sel_date = self.date_filter.date().toPyDate()
+        sel_type = self.type_filter.currentText()
 
-            def keep(a):
-                # filtre date
-                if a.timestamp.date() != sel_date:
+        def keep(a):
+            # Filter by date
+            if a.timestamp.date() != sel_date:
+                return False
+            # Filter by type
+            if sel_type != "Type":
+                txt = a.type if isinstance(a.type, str) else a.type.value
+                if txt != sel_type:
                     return False
-                # filtre type
-                if sel_type != "Type":
-                    txt = a.type if isinstance(a.type, str) else a.type.value
-                    if txt != sel_type:
-                        return False
-                return True
+            return True
 
-            filtered = [a for a in all_history if keep(a)]
+        filtered = [a for a in all_history if keep(a)]
 
-            # on repeuple la zone d’historique
-            self.clear_layout(self.history_list)
-            if filtered:
-                for alert in filtered:
-                    w = AlertItem(alert, show_actions=False, show_details=True)
-                    w.details_clicked.connect(self.show_alert_details)
-                    self.history_list.addWidget(w)
-            else:
-                no = QLabel("No alert history available")
-                no.setObjectName("emptyStateMessage")
-                no.setAlignment(Qt.AlignCenter)
-                self.history_list.addWidget(no)
+        # Repopulate the history list
+        self.clear_layout(self.history_list)
+        if filtered:
+            for alert in filtered:
+                w = AlertItem(alert, show_actions=False, show_details=True)
+                w.details_clicked.connect(self.show_alert_details)
+                self.history_list.addWidget(w)
+        else:
+            no = QLabel("No alert history available")
+            no.setObjectName("emptyStateMessage")
+            no.setAlignment(Qt.AlignCenter)
+            self.history_list.addWidget(no)
     
     def filter_alerts(self, text: str):
-        """Filtre la liste des alertes en temps-réel ET l'historique par type ou message."""
+        """Filter both real-time alerts and history by type or message."""
         pattern = text.lower().strip()
 
-        # 1) Filtrer alertes non acquittées
+        # 1) Filter unacknowledged alerts
         raw = self.alert_service.get_unacknowledged_alerts()
         filtered_rt = [
             a for a in raw
             if pattern in (a.type if isinstance(a.type, str) else a.type.value).lower()
                or pattern in a.message.lower()
         ]
-        # Repeupler la liste RT
+        # Repopulate the real-time alerts list
         self.clear_layout(self.rt_alerts_list)
         if filtered_rt:
             for a in filtered_rt:
@@ -488,14 +484,14 @@ class AlertsScreen(QWidget):
             lbl.setAlignment(Qt.AlignCenter)
             self.rt_alerts_list.addWidget(lbl)
 
-        # 2) Filtrer historique
+        # 2) Filter history
         hist = self.alert_service.get_alert_history()
         filtered_hist = [
             a for a in hist
             if pattern in (a.type if isinstance(a.type, str) else a.type.value).lower()
                or pattern in a.message.lower()
         ]
-        # Repeupler l’historique
+        # Repopulate the history list
         self.clear_layout(self.history_list)
         if filtered_hist:
             for a in filtered_hist:
@@ -510,7 +506,7 @@ class AlertsScreen(QWidget):
 
 
 class AlertItem(QFrame):
-    """Un item d’alerte stylé comme dans le dashboard"""
+    """A styled alert item as seen in the dashboard."""
     acknowledge_clicked = pyqtSignal(int)
     archive_clicked    = pyqtSignal(int)
     details_clicked    = pyqtSignal(int)
@@ -523,7 +519,7 @@ class AlertItem(QFrame):
         self.init_ui()
 
     def init_ui(self):
-        # même cadre flouté que dashboard
+        """Initialize the UI for the alert item."""
         from src.components.dashboard import SectionFrame
         container = SectionFrame(self)
         container.setObjectName("alertItem")
@@ -533,22 +529,22 @@ class AlertItem(QFrame):
         layout.setContentsMargins(15, 8, 15, 8)
         layout.setSpacing(12)
 
-        # --- Gauche : infos
+        # Left: Information
         info = QVBoxLayout()
         info.setSpacing(2)
 
-        # 1) Type / classe de détection
-        title = QLabel(self.alert.detection_class.title())  # ex: “Swimmer”
+        # 1) Detection type/class
+        title = QLabel(self.alert.detection_class.title())  # e.g., “Swimmer”
         title.setObjectName("alertType")
         f = title.font(); f.setBold(True); title.setFont(f)
         info.addWidget(title)
 
-        # 2) Bref message
-        brief = QLabel(self.alert.message.split('\n')[0])   # première ligne
+        # 2) Brief message
+        brief = QLabel(self.alert.message.split('\n')[0])   # first line
         brief.setObjectName("alertDescription")
         info.addWidget(brief)
 
-        # 3) Horodatage relatif
+        # 3) Relative timestamp
         ago = f"{(QDateTime.currentDateTime().secsTo(self.alert.timestamp) * -1) // 60} mins ago"
         time = QLabel(ago)
         time.setObjectName("alertTimestamp")
@@ -557,7 +553,7 @@ class AlertItem(QFrame):
         layout.addLayout(info)
         layout.addStretch()
 
-        # --- Droite : boutons
+        # Right: Buttons
         if self.show_actions:
             btn_ack = QPushButton("Acknowledge")
             btn_ack.setObjectName("acknowledgeButton")
@@ -573,7 +569,7 @@ class AlertItem(QFrame):
             btn_det.clicked.connect(lambda: self.details_clicked.emit(self.alert.id))
             layout.addWidget(btn_det)
 
-        # replace self par container pour que l’item soit stylé
+        # Replace self with container for styling
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(container)
