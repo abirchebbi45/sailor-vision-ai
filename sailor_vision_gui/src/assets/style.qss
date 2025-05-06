@@ -88,9 +88,6 @@ QWidget#central_widget {
     font-size: 12px;
 }
 
-#navigationList {
-    margin-top: 5px;
-}
 
 /* Header styles */
 
@@ -376,10 +373,14 @@ QWidget {
 
 /* Recording styles */
 #recordingItem {
-    background-color: #ffffff;
-    border-radius: 6px;
-    border: 1px solid #e0e0e0;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 10px;
     padding: 10px;
+}
+
+#recordingItem:hover {
+    background-color: #f1f1f1;
 }
 
 #recordingTitle {
@@ -588,43 +589,40 @@ QPushButton:disabled {
     max-width: 220px;
 }
 
-#navigationList QWidget {
-    background-color: transparent;
-    padding: 10px 0;
-}
-
-#NavButton {
-    border: none;
-    border-radius: 4px;
-    padding: 8px 0;
-    margin: 2px 0;
-    text-align: left;
-    background-color: transparent;
-}
-
-.NavButton:hover {
-    background-color: #f0f0f0;
-    color: #333333;
-}
-
-#NavButton[active="true"] {
-    color: #219ebc;
-    background-color: transparent;
-    border-left: 3px solid #219ebc;
-}
-
 #navigationList {
     background-color: transparent;
     margin: 0;
     padding: 0;
 }
-#navigationList QWidget {
+
+QWidget#NavButton {
+    border: none;
+    border-radius: 4px;
+    padding: 8px 0;
+    margin: 2px 0;
     background-color: transparent;
 }
 
-.NavButton QLabel {
-    padding-left: 10px;
+QWidget#NavButton:hover {
+    background-color: #f0f0f0;
 }
+
+/* Étiquette texte à l’intérieur */
+QWidget#NavButton QLabel {
+    padding-left: 10px;
+    color: #333333;
+}
+
+/* État actif */
+QWidget#NavButton[active="true"] {
+    color: #1E88E5;
+    border-left: 3px solid #1E88E5;
+    background-color: rgba(30,136,229,0.1);
+}
+
+
+
+
 #userProfileContainer {
     border-top: 1px solid #e0e0e0;
     padding: 10px;
@@ -1005,4 +1003,32 @@ QPushButton#AcknowledgeButton:hover {
 
 #ActionButton:hover {
     background-color: #1976D2;
+}
+
+/* Main widget styles */
+#mainWidget {
+    background-color: transparent;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+}
+
+/* Scroll area styles */
+#mainScroll {
+    border: none;
+}
+
+/* Filter frame styles */
+#filterFrame {
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 10px;
+}
+
+/* Details popup styles */
+#detailsPopup {
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 10px;
 }
