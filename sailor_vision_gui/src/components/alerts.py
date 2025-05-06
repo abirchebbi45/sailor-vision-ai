@@ -1,5 +1,3 @@
-# Fichier: src/components/alerts.py
-
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QPushButton, QFrame, QScrollArea, QLineEdit,
                             QDateEdit, QComboBox, QDialog, QTextEdit, QFormLayout)
@@ -218,9 +216,9 @@ class AlertsScreen(QWidget):
         
         # Page buttons
         pagination.addWidget(self.create_page_button("1", True))
-        pagination.addWidget(self.create_page_button("2"))
-        pagination.addWidget(self.create_page_button("3"))
-        pagination.addWidget(self.create_page_button("4"))
+        pagination.addWidget(self.create_page_button("2"), True)
+        pagination.addWidget(self.create_page_button("3"), True)
+        pagination.addWidget(self.create_page_button("4"), True)
         
         # Ellipsis
         ellipsis = QLabel("...")
