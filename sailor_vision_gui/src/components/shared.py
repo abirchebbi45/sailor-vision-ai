@@ -2,13 +2,16 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QPushButton, QFrame, QSizePolicy, QSlider,
                             QToolButton, QLineEdit)
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QUrl
 from PyQt5.QtGui import QPixmap, QIcon, QPainter, QColor, QPen
+from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+from PyQt5.QtMultimediaWidgets import QVideoWidget  # Import QVideoWidget
 import os
 
 from utils import format_relative_time
+import logging
 
-
+logger = logging.getLogger(__name__)
 
 class HeaderWidget(QWidget):
     search_text_changed = pyqtSignal(str)
@@ -94,8 +97,10 @@ class SidebarNavButton(QWidget):
     
     def __init__(self, icon_name, text, parent=None):
         super().__init__(parent)
+        self.setObjectName("NavButton") 
         self.active = False
         self.init_ui(icon_name, text)
+        
     
     def init_ui(self, icon_name, text):
         layout = QHBoxLayout()
@@ -114,7 +119,6 @@ class SidebarNavButton(QWidget):
         
         self.setLayout(layout)
         self.setCursor(Qt.PointingHandCursor)
-        self.setObjectName("NavButton")
     
     def set_active(self, active):
         self.active = active
@@ -320,13 +324,11 @@ class CameraWidget(QFrame):
         feed_container = QWidget()
         feed_container.setObjectName("cameraFeed")
         feed_container.setFixedHeight(200)
-        feed_container.setStyleSheet("#cameraFeed { background-color: #313131; }")
         
         # Example image with detection boxes (would be dynamic in real app)
         # Here we just show a placeholder
         placeholder = QLabel("Camera Feed")
         placeholder.setAlignment(Qt.AlignCenter)
-        placeholder.setStyleSheet("color: white;")
         
         feed_layout = QVBoxLayout(feed_container)
         feed_layout.addWidget(placeholder)
@@ -372,7 +374,6 @@ class LiveFeedWidget(QFrame):
         self.status_indicator = QLabel()
         self.status_indicator.setFixedSize(15, 15)
         self.status_indicator.setObjectName("statusIndicator")
-        self.status_indicator.setStyleSheet("#statusIndicator { background-color: #4CAF50; border-radius: 7px; }")
         
         status_text = QLabel("Connected")
         
@@ -392,7 +393,6 @@ class LiveFeedWidget(QFrame):
         self.feed_label.setObjectName("cameraFeed")
         self.feed_label.setAlignment(Qt.AlignCenter)
         self.feed_label.setMinimumHeight(200)
-        self.feed_label.setStyleSheet("#cameraFeed { background-color: #313131; }")
         self.feed_label.setText("Loading feed...")
         
         layout.addWidget(self.feed_label)
@@ -469,6 +469,11 @@ class VideoPlayerWidget(QFrame):
         self.is_playing = False
         self.current_time = 0
         self.total_time = 100  # Default duration in seconds
+        
+        # Initialize QMediaPlayer before calling init_ui
+        self.media_player = QMediaPlayer(None, QMediaPlayer.VideoSurface)
+        self.media_player.mediaStatusChanged.connect(self.check_for_errors)  # Connect media status signal
+        
         self.init_ui()
         
     def init_ui(self):
@@ -482,25 +487,8 @@ class VideoPlayerWidget(QFrame):
         layout = QVBoxLayout(self)
         
         # Video display
-        self.video_display = QLabel()
-        self.video_display.setAlignment(Qt.AlignCenter)
+        self.video_display = QVideoWidget()  # Use QVideoWidget for video playback
         self.video_display.setMinimumHeight(200)
-        self.video_display.setStyleSheet("background-color: #313131;")
-        
-        # Default "no video" message
-        self.video_display.setText("No video selected")
-        
-        # Play button overlay
-        play_overlay = QPushButton()
-        play_overlay.setIcon(QIcon.fromTheme("media-playback-start"))
-        play_overlay.setIconSize(QSize(50, 50))
-        play_overlay.setStyleSheet("background: transparent; border: none;")
-        play_overlay.clicked.connect(self.toggle_playback)
-        
-        # Position play button over video display
-        play_layout = QVBoxLayout()
-        play_layout.addWidget(play_overlay, 0, Qt.AlignCenter)
-        self.video_display.setLayout(play_layout)
         
         layout.addWidget(self.video_display)
         
@@ -545,37 +533,43 @@ class VideoPlayerWidget(QFrame):
         controls_layout.addWidget(settings_button)
         
         layout.addLayout(controls_layout)
-    
-    def set_source(self, source):
-        """Set video source"""
-        self.source = source
-        self.current_time = 0
-        self.seek_slider.setValue(0)
         
-        # In a real app, you would load the video source
-        # Here we just show a placeholder
-        self.video_display.setText("")
-        self.video_display.setStyleSheet("background-color: #313131; background-image: url(assets/video_placeholder.svg); background-repeat: no-repeat; background-position: center;")
-        
-        # Start playing
-        self.play()
+        # Attach media player to video display
+        self.media_player.setVideoOutput(self.video_display)  # Attach QVideoWidget to QMediaPlayer
     
-    def play(self):
-        """Play video"""
-        if not self.source:
+    def check_for_errors(self, status):
+        """Check for errors in the media player"""
+        if self.media_player.error() != QMediaPlayer.NoError:
+            error_message = self.media_player.errorString()
+            print(f"MediaPlayer Error: {error_message}")
+            logger.error(f"MediaPlayer Error: {error_message}")
+        
+    def set_source(self, file_path):
+        """Set the video source"""
+        if not os.path.exists(file_path):
+            print(f"Video file not found: {file_path}")
+            logger.error(f"Video file not found: {file_path}")
             return
+        self.source = file_path
+        self.media_player.setMedia(QMediaContent(QUrl.fromLocalFile(file_path)))
+        print(f"Video source set: {file_path}")
+        logger.info(f"Video source set: {file_path}")
         
-        self.is_playing = True
-        self.play_button.setIcon(QIcon.fromTheme("media-playback-pause"))
+    def play(self):
+        """Start video playback"""
+        if self.source:
+            self.media_player.play()
+            self.is_playing = True
+            print("Video playback started")
+        else:
+            print("No video source set")
         
-        # In a real app, you would start the video playback
-    
     def pause(self):
-        """Pause video"""
-        self.is_playing = False
-        self.play_button.setIcon(QIcon.fromTheme("media-playback-start"))
-        
-        # In a real app, you would pause the video playback
+        """Pause video playback"""
+        if self.is_playing:
+            self.media_player.pause()
+            self.is_playing = False
+            print("Video playback paused")
     
     def toggle_playback(self):
         """Toggle between play and pause"""
@@ -587,5 +581,15 @@ class VideoPlayerWidget(QFrame):
     def seek(self, position):
         """Seek to position"""
         self.current_time = (position / 100) * self.total_time
-        
         # In a real app, you would seek the video to the specified position
+
+class RecordingItem(QFrame):
+    """Widget représentant un élément d'enregistrement dans la liste"""
+    def __init__(self, recording, playback_screen):
+        super().__init__()
+        self.recording = recording
+        self.playback_screen = playback_screen
+        self.setObjectName("recordingItem")  # Assign an object name for styling
+        self.setMinimumHeight(80)
+        self.setMaximumHeight(80)
+        self.init_ui()
