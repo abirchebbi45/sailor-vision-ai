@@ -1,5 +1,9 @@
 import sys
 import os
+
+# Add the src directory to sys.path
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
 from PyQt5.QtWidgets import QApplication, QMainWindow, QStackedWidget, QWidget, QVBoxLayout, QHBoxLayout
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import QIcon, QFontDatabase, QFont
@@ -12,11 +16,14 @@ from src.components.dashboard import DashboardScreen
 from src.components.live_feed import LiveFeedScreen
 from src.components.alerts import AlertsScreen
 from src.components.user_management import UserManagementScreen
+from src.components.playback import PlaybackScreen
 from src.components.shared import Sidebar, HeaderWidget
+
 
 from database import init_db
 from models import User, Camera, Alert, Recording
 from config import load_config
+from shared.detection_recorder import DetectionRecorder
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,15 +31,20 @@ logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
     def __init__(self, ros_node):
+        """Initialize the main application window"""
         super().__init__()
         self.ros_node = ros_node
         
         # Initialize database
         init_db()
         
+        # Initialize the DetectionRecorder
+        self.detection_recorder = DetectionRecorder(self.ros_node)
+        logger.info("Detection recorder initialized")
+
         # Main window configuration
         self.setWindowTitle("Sailor Vision AI - Maritime Surveillance")
-        self.setMinimumSize(960, 680)  # Further reduced size for better adaptability
+        self.setMinimumSize(960, 680)  # Set minimum window size
         
         # Central widget
         self.central_widget = QWidget()
@@ -54,7 +66,7 @@ class MainWindow(QMainWindow):
         self.sidebar = None
 
     def handle_login_success(self, user_data):
-        """Handle successful login"""
+        """Handle successful login and transition to the main interface"""
         logger.debug("Login successful, loading main interface")
         
         # Clean up login screen
@@ -65,7 +77,7 @@ class MainWindow(QMainWindow):
         self.initialize_main_interface(user_data)
 
     def initialize_main_interface(self, user_data):
-        """Initialize main interface after login"""
+        """Initialize the main interface after login"""
         # Clean up previous content
         if self.current_content:
             self.current_content.deleteLater()
@@ -109,7 +121,7 @@ class MainWindow(QMainWindow):
             lambda: self.switch_view("Live Feed", self.live_feed_screen)
         )
         self.sidebar.playback_clicked.connect(
-            lambda: self.switch_view("Playback", None)  # To be implemented
+            lambda: self.switch_view("Playback", self.playback_screen)  # To be implemented
         )
         self.sidebar.alerts_clicked.connect(
             lambda: self.switch_view("Alerts", self.alerts_screen )  
@@ -128,90 +140,90 @@ class MainWindow(QMainWindow):
         self.switch_view("Dashboard", self.dashboard_screen)
 
     def initialize_screens(self, user_data):
-        """Initialize different screens"""
+        """Initialize different screens for the application"""
         self.dashboard_screen  = DashboardScreen(user_data=user_data)
         self.live_feed_screen  = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node)
         self.alerts_screen     = AlertsScreen(user_data=user_data,    ros_node=self.ros_node)
         self.user_management_screen = UserManagementScreen(user_data=user_data)
+        self.playback_screen   = PlaybackScreen(user_data=user_data, ros_node=self.ros_node)
 
-        
         self.stacked_widget.addWidget(self.dashboard_screen)
         self.stacked_widget.addWidget(self.live_feed_screen)
         self.stacked_widget.addWidget(self.alerts_screen)
         self.stacked_widget.addWidget(self.user_management_screen)
+        self.stacked_widget.addWidget(self.playback_screen)  # Add playback_screen to the stack
 
     def switch_view(self, title, widget):
-        """Change active view"""
+        """Change the active view in the application"""
         if not widget:
             logger.warning(f"Screen '{title}' not implemented")
             return
 
-        # Afficher la nouvelle page
+        # Display the new page
         self.header.set_title(title)
         self.stacked_widget.setCurrentWidget(widget)
 
-        # 1) Déconnecter et cacher systématiquement l’ancien bouton d’action
+        # Disconnect and hide the previous action button
         try:
             self.header.action_button_clicked.disconnect()
         except (TypeError, RuntimeError):
             pass
         self.header.set_action_button("", visible=False)
 
-        # 2) Déconnecter l’ancien handler de recherche (si utilisé)
+        # Disconnect the previous search handler (if used)
         try:
             self.header.search_text_changed.disconnect()
         except (TypeError, RuntimeError):
             pass
 
-        # 3) Configuration spécifique à chaque écran
+        # Specific configuration for each screen
         if title == "Dashboard":
             self.header.set_search_box_visibility(True)
             self.header.set_search_placeholder("Search cameras, alerts...")
-            # Si vous avez un filtre à connecter :
+            # If you have a filter to connect:
             # self.header.search_text_changed.connect(self.dashboard_screen.filter_items)
 
         elif title == "Live Feed":
             self.header.set_search_box_visibility(True)
             self.header.set_search_placeholder("Search cameras...")
-            # Réactiver le bouton "Add Camera"
+            # Enable the "Add Camera" button
             self.header.set_action_button("Add Camera", visible=True)
             self.header.action_button_clicked.connect(
                 self.live_feed_screen.show_add_camera_dialog
             )
 
         elif title == "Alerts":
-            # Affiche la searchbox et change le placeholder
+            # Show the search box and change the placeholder
             self.header.set_search_box_visibility(True)
             self.header.set_search_placeholder("Search alerts…")
 
-            # Déconnecte les anciennes connexions et connecte au filtre
+            # Disconnect old connections and connect to the filter
             try: self.header.search_text_changed.disconnect()
             except: pass
             self.header.search_text_changed.connect(self.alerts_screen.filter_alerts)
 
-            # Pas de bouton d’action ici
+            # No action button here
             self.header.set_action_button("", False)
 
         elif title == "User Management":
             self.header.set_search_box_visibility(True)
             self.header.set_search_placeholder("Search users...")
-            # Bouton "Add User"
+            # "Add User" button
             self.header.set_action_button("Add User", visible=True)
             self.header.action_button_clicked.connect(
                 self.user_management_screen.on_add_user_clicked
             )
-            # Filtre de recherche pour les utilisateurs
+            # Search filter for users
             self.header.search_text_changed.connect(self.user_management_screen.filter_users)
 
         else:
-            # Écrans futurs
+            # Future screens
             self.header.set_search_box_visibility(True)
             self.header.set_search_placeholder(f"Search {title.lower()}…")
-            # aucun bouton d’action par défaut
-
+            # No default action button
 
     def clear_layout(self, layout):
-        """Recursively clear a layout"""
+        """Recursively clear all widgets and layouts"""
         while layout.count():
             item = layout.takeAt(0)
             widget = item.widget()
@@ -237,16 +249,15 @@ def setup_fonts():
     QApplication.setFont(app_font)
 
 def main():
-
+    """Main entry point for the application"""
     rclpy.init()
     ros_node = Node('sailor_vision_bridge')
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
 
-    
     # Setup style
     style_path = os.path.join(os.path.dirname(__file__), "src", "assets", "style.qss")
-    print(f"Loading style from {style_path}")
+    logger.info(f"Loading style from {style_path}")
     try:
         with open(style_path, "r") as f:
             app.setStyleSheet(f.read())
@@ -267,14 +278,15 @@ def main():
     
     window = MainWindow(ros_node)
     window.show()
-    # 3) Boucle ROS ↔ Qt
+    
+    # ROS ↔ Qt event loop
     timer = QTimer()
     timer.timeout.connect(lambda: rclpy.spin_once(ros_node, timeout_sec=0.0))
     timer.start(10)
 
     exit_code = app.exec_()
 
-    # 4) Arrêt propre
+    # Clean shutdown
     rclpy.shutdown()
     sys.exit(exit_code)
 
