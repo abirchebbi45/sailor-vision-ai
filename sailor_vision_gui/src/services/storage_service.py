@@ -18,7 +18,7 @@ class StorageService:
         Store video metadata in database
         
         Args:
-            metadata (dict): Video metadata including path, class_name, start_time, duration, frame_count, size, resolution, storage_type
+            metadata (dict): Video metadata including path, name, class_name, start_time, duration, frame_count, size, resolution, storage_type
         """
         try:
             # Extract file path and verify its existence
@@ -44,6 +44,7 @@ class StorageService:
             new_recording = Recording(
                 camera_id=camera_id,
                 file_path=file_path,
+                name=metadata.get("class_name"),  # Use the name field (class_name)
                 start_time=start_time,
                 end_time=datetime.now(),  # End time is now
                 duration=metadata.get("duration", 0),
@@ -56,7 +57,7 @@ class StorageService:
             self.db_session.add(new_recording)
             self.db_session.commit()
             
-            logger.info(f"Saved recording metadata to database: ID={new_recording.id}, Path={file_path}")
+            logger.info(f"Saved recording metadata to database: ID={new_recording.id}, Name={new_recording.name}, Path={file_path}")
             return new_recording.id
             
         except Exception as e:
