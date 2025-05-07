@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QPushButton, QFrame, QScrollArea, QLineEdit,
-                            QDateEdit, QComboBox, QDialog, QTextEdit, QFormLayout)
+                            QDateEdit, QComboBox, QDialog, QTextEdit, QFormLayout, QCheckBox)
 from PyQt5.QtCore import Qt, QDate, QSize, pyqtSignal, QTimer, QDateTime
 from PyQt5.QtGui import QPixmap, QIcon
 import os
@@ -112,6 +112,8 @@ class AlertsScreen(QWidget):
         # self.alert_bridge.start()
         logger.info("Alert bridge started and connected to signal")
         
+        self.selected_alerts = set()  # Track selected real-time alerts
+        
         self.init_ui()
         
         # Load initial data
@@ -137,15 +139,32 @@ class AlertsScreen(QWidget):
         rt_alerts_layout = QVBoxLayout(rt_alerts_section)
         rt_alerts_layout.setContentsMargins(15, 15, 15, 15)
         
+        rt_alerts_header_layout = QHBoxLayout()
         rt_alerts_header = QLabel("Real-Time Alerts")
         rt_alerts_header.setObjectName("SectionTitle")
-        rt_alerts_layout.addWidget(rt_alerts_header)
-        
-        # Real-time alerts list
-        self.rt_alerts_list = QVBoxLayout()
+        rt_alerts_header_layout.addWidget(rt_alerts_header)
+
+        # "Select All" checkbox
+        self.select_all_checkbox = QCheckBox("Select All")
+        self.select_all_checkbox.stateChanged.connect(self.toggle_select_all)
+        rt_alerts_header_layout.addWidget(self.select_all_checkbox, alignment=Qt.AlignRight)
+
+        rt_alerts_layout.addLayout(rt_alerts_header_layout)
+
+        # Real-time alerts list container
+        self.rt_alerts_list_container = QWidget()
+        self.rt_alerts_list = QVBoxLayout(self.rt_alerts_list_container)
         self.rt_alerts_list.setSpacing(10)
-        rt_alerts_layout.addLayout(self.rt_alerts_list)
-        
+
+        rt_alerts_layout.addWidget(self.rt_alerts_list_container)
+
+        # Acknowledge Selected button
+        self.ack_selected_button = QPushButton("Acknowledge Selected")
+        self.ack_selected_button.setObjectName("secondaryButton")
+        self.ack_selected_button.clicked.connect(self.acknowledge_selected_alerts)
+        self.ack_selected_button.setEnabled(False)  # Initially disabled
+        rt_alerts_layout.addWidget(self.ack_selected_button, alignment=Qt.AlignRight)
+
         content_layout.addWidget(rt_alerts_section)
         
         # Alert history section
@@ -283,27 +302,66 @@ class AlertsScreen(QWidget):
     
     def load_alerts(self):
         """Load and display real-time alerts from the alert service."""
-        # Clear existing alerts
         self.clear_layout(self.rt_alerts_list)
-        
-        # Get real-time alerts from the service
         alerts = self.alert_service.get_unacknowledged_alerts()
-        
-        # Add alert widgets to the list
-        for alert in alerts:
-            alert_widget = AlertItem(alert, show_actions=True, show_details=True)
-            alert_widget.acknowledge_clicked.connect(self.acknowledge_alert)
-            alert_widget.archive_clicked.connect(self.archive_alert)
-            
-            self.rt_alerts_list.addWidget(alert_widget)
-        
-        # If no alerts, display a message
-        if not alerts:
+
+        if alerts:
+            # Batch UI updates for better performance
+            self.rt_alerts_list_container.setUpdatesEnabled(False)
+            for alert in alerts:
+                alert_widget = AlertItem(alert, show_actions=True, show_details=True)
+                alert_widget.acknowledge_clicked.connect(self.acknowledge_alert)
+                alert_widget.archive_clicked.connect(self.archive_alert)
+                alert_widget.selection_changed.connect(self.update_selected_alerts)
+                self.rt_alerts_list.addWidget(alert_widget)
+            self.rt_alerts_list_container.setUpdatesEnabled(True)
+        else:
             no_alerts = QLabel("No active alerts")
             no_alerts.setObjectName("emptyStateMessage")
             no_alerts.setAlignment(Qt.AlignCenter)
             self.rt_alerts_list.addWidget(no_alerts)
+            self.select_all_checkbox.setChecked(False)  # Reset "Select All" if no alerts
+            self.ack_selected_button.setEnabled(False)
     
+    def toggle_select_all(self, state):
+        """Select or deselect all real-time alerts based on the 'Select All' checkbox."""
+        self.selected_alerts.clear()
+        for i in range(self.rt_alerts_list.count()):
+            item = self.rt_alerts_list.itemAt(i).widget()
+            if isinstance(item, AlertItem) and item.show_actions:  # Ensure only real-time alerts are affected
+                item.set_selected(state == Qt.Checked)
+                if state == Qt.Checked:
+                    self.selected_alerts.add(item.alert.id)
+        self.ack_selected_button.setEnabled(bool(self.selected_alerts))
+
+    def update_selected_alerts(self, alert_id, selected):
+        """Update the set of selected real-time alerts when an alert's checkbox is toggled."""
+        if selected:
+            self.selected_alerts.add(alert_id)
+        else:
+            self.selected_alerts.discard(alert_id)
+        self.ack_selected_button.setEnabled(bool(self.selected_alerts))
+        if not self.selected_alerts:
+            self.select_all_checkbox.setChecked(False)
+
+    def acknowledge_selected_alerts(self):
+        """Acknowledge all selected real-time alerts."""
+        if not self.selected_alerts:
+            QMessageBox.warning(self, "No Alerts Selected", "Please select alerts to acknowledge.")
+            return
+
+        # Batch acknowledgment to reduce processing time
+        self.alert_service.batch_acknowledge_alerts(list(self.selected_alerts))
+
+        # Clear selection after acknowledging
+        self.selected_alerts.clear()
+        self.select_all_checkbox.setChecked(False)
+        self.ack_selected_button.setEnabled(False)
+
+        # Reload alerts and alert history
+        self.load_alerts()
+        self.load_alert_history()  # Ensure the history section is updated in real time
+
     def load_alert_history(self):
         """Load and display the alert history from the alert service."""
         # Clear existing history
@@ -508,6 +566,7 @@ class AlertItem(QFrame):
     acknowledge_clicked = pyqtSignal(int)
     archive_clicked    = pyqtSignal(int)
     details_clicked    = pyqtSignal(int)
+    selection_changed  = pyqtSignal(int, bool)
 
     def __init__(self, alert, show_actions=True, show_details=True):
         super().__init__()
@@ -567,10 +626,20 @@ class AlertItem(QFrame):
             btn_det.clicked.connect(lambda: self.details_clicked.emit(self.alert.id))
             layout.addWidget(btn_det)
 
+        # Selection checkbox
+        if self.show_actions:
+            self.checkbox = QCheckBox()
+            self.checkbox.stateChanged.connect(lambda state: self.selection_changed.emit(self.alert.id, state == Qt.Checked))
+            layout.addWidget(self.checkbox)
+
         # Replace self with container for styling
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(container)
+
+    def set_selected(self, selected):
+        """Set the checkbox state programmatically."""
+        self.checkbox.setChecked(selected)
 
 
 
