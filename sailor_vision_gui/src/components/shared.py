@@ -101,33 +101,62 @@ class SidebarNavButton(QWidget):
         self.active = False
         self.init_ui(icon_name, text)
         
-    
     def init_ui(self, icon_name, text):
         layout = QHBoxLayout()
-        layout.setContentsMargins(10, 5, 10, 5)
+        layout.setContentsMargins(8, 4, 8, 4)  # Adjust margins for compact size
+        layout.setSpacing(8)  # Add spacing between icon and text
         
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(24, 24)
-        icon = QIcon.fromTheme(icon_name, QIcon())
+        self.icon_label.setFixedSize(24, 24)  # Reduce the icon size
+        self.icon_label.setScaledContents(True)  # Allow the icon to scale properly
+        icon = QIcon(icon_name)  # Use the provided icon name directly
         if not icon.isNull():
-            self.icon_label.setPixmap(icon.pixmap(24, 24))
+            self.icon_label.setPixmap(icon.pixmap(24, 24))  # Set the icon size explicitly
         
         self.text_label = QLabel(text)
+        self.text_label.setObjectName("navButtonText")
+        self.text_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)  # Align text properly
+        self.text_label.setStyleSheet("font-size: 12px;")  # Minimize text size
+        
         layout.addWidget(self.icon_label)
         layout.addWidget(self.text_label)
         layout.addStretch()
         
         self.setLayout(layout)
         self.setCursor(Qt.PointingHandCursor)
+        self.setProperty("active", "false")  # Ensure the default state is inactive
+        self.update_stylesheet()
     
     def set_active(self, active):
         self.active = active
-        if active:
-            self.setProperty("active", "true")
+        self.setProperty("active", "true" if active else "false")
+        self.update_stylesheet()
+    
+    def update_stylesheet(self):
+        """Update the stylesheet dynamically based on the active state."""
+        if self.active:
+            self.setStyleSheet("""
+                QWidget#NavButton {
+                    background-color: #E3F2FD;
+                }
+                QWidget#NavButton QLabel {
+                    color: #1E88E5;
+                    font-weight: bold;  /* Make text bold when active */
+                }
+            """)
         else:
-            self.setProperty("active", "false")
-        self.style().unpolish(self)
-        self.style().polish(self)
+            self.setStyleSheet("""
+                QWidget#NavButton {
+                    background-color: transparent;
+                }
+                QWidget#NavButton:hover {
+                    background-color: #f5f5f5;
+                }
+                QWidget#NavButton QLabel {
+                    color: #333333;
+                    font-weight: normal;  /* Normal text weight when inactive */
+                }
+            """)
     
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -272,33 +301,34 @@ class Sidebar(QWidget):
         return button
     
     def set_active_button(self, button):
+        """Set the active button and deactivate the previous one."""
         if self.active_button:
-            self.active_button.set_active(False)
-        button.set_active(True)
+            self.active_button.set_active(False)  # Deactivate the previous button
+        button.set_active(True)  # Activate the new button
         self.active_button = button
     
     def on_dashboard_clicked(self):
-        self.set_active_button(self.dashboard_btn)
+        self.set_active_button(self.dashboard_btn)  # Update active button
         self.dashboard_clicked.emit()
     
     def on_live_feed_clicked(self):
-        self.set_active_button(self.live_feed_btn)
+        self.set_active_button(self.live_feed_btn)  # Update active button
         self.live_feed_clicked.emit()
     
     def on_playback_clicked(self):
-        self.set_active_button(self.playback_btn)
+        self.set_active_button(self.playback_btn)  # Update active button
         self.playback_clicked.emit()
     
     def on_alerts_clicked(self):
-        self.set_active_button(self.alerts_btn)
+        self.set_active_button(self.alerts_btn)  # Update active button
         self.alerts_clicked.emit()
     
     def on_user_management_clicked(self):
-        self.set_active_button(self.user_mgmt_btn)
+        self.set_active_button(self.user_mgmt_btn)  # Update active button
         self.user_management_clicked.emit()
     
     def on_settings_clicked(self):
-        self.set_active_button(self.settings_btn)
+        self.set_active_button(self.settings_btn)  # Update active button
         self.settings_clicked.emit()
     
     def on_profile_clicked(self):
@@ -396,13 +426,6 @@ class LiveFeedWidget(QFrame):
         self.feed_label.setText("Loading feed...")
         
         layout.addWidget(self.feed_label)
-        
-        """ # Camera label
-        camera_label = QLabel(self.camera.name.upper())
-        camera_label.setAlignment(Qt.AlignCenter)
-        camera_label.setObjectName("cameraLabel")
-        
-        layout.addWidget(camera_label) """
     
     def update_frame(self, pixmap):
         """Update the feed with a new frame"""
