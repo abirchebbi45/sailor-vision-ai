@@ -223,17 +223,6 @@ class PlaybackScreen(QWidget):
         date_filter.addWidget(self.date_edit)
         filter_layout.addLayout(date_filter)
 
-        # Shortcut buttons for date filters
-        self.today_button = QPushButton("Today")
-        self.today_button.setObjectName("smallButton")  # Add object name for styling
-        self.today_button.clicked.connect(self.filter_today)
-        filter_layout.addWidget(self.today_button)
-
-        self.week_button = QPushButton("This Week")
-        self.week_button.setObjectName("smallButton")  # Add object name for styling
-        self.week_button.clicked.connect(self.filter_this_week)
-        filter_layout.addWidget(self.week_button)
-
         # Reset filters button
         self.reset_button = QPushButton("Reset Filters")
         self.reset_button.setObjectName("smallButton")  # Add object name for styling
@@ -419,25 +408,23 @@ class PlaybackScreen(QWidget):
         """Load and display recordings based on filters and pagination"""
         # Calculate the offset for pagination
         offset = (self.current_page - 1) * self.recordings_per_page
-        
-        # Convert the date filter if necessary
-        date_filter = None
-        if self.date_filter:
-            date_filter = self.date_filter.toPyDate()
-        
+
+        # Convert the date filter to a Python date object if necessary
+        date_filter = self.date_filter.toPyDate() if self.date_filter else None
+
         # Get the total number of recordings (for pagination)
         all_recordings = self.storage_service.get_recordings(
             camera_id=self.camera_filter,
-            start_date=date_filter if date_filter else None
+            start_date=date_filter  # Pass the converted date filter
         )
         total_recordings = len(all_recordings)
-        
+
         # Get the recordings for the current page
         recordings = self.storage_service.get_recordings(
             limit=self.recordings_per_page,
             offset=offset,
             camera_id=self.camera_filter,
-            start_date=date_filter if date_filter else None
+            start_date=date_filter  # Pass the converted date filter
         )
         
         # Clear existing recordings
@@ -548,18 +535,6 @@ class PlaybackScreen(QWidget):
         self.current_page = page_num
         self.load_recordings()
 
-    def filter_today(self):
-        """Filter recordings to show only today's recordings"""
-        self.date_filter = QDate.currentDate()
-        self.load_recordings()
-
-    def filter_this_week(self):
-        """Filter recordings to show only this week's recordings"""
-        today = QDate.currentDate()
-        start_of_week = today.addDays(-today.dayOfWeek() + 1)  # Start of the week (Monday)
-        self.date_filter = start_of_week
-        self.load_recordings()
-
     def reset_filters(self):
         """Reset all filters and reload recordings"""
         self.date_filter = None
@@ -582,7 +557,7 @@ class PlaybackScreen(QWidget):
 
     def on_date_filter_changed(self, date):
         """Handle changes in the date filter"""
-        self.date_filter = date
+        self.date_filter = date  # Ensure the date is stored as a QDate object
         self.load_recordings()
 
     def clear_layout(self, layout):
