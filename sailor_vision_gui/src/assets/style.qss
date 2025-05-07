@@ -5,9 +5,8 @@
 QWidget#headerWidget {
     background-color: #ffffff;
     border-bottom: 1px solid #e0e0e0;
-    /* on enlève la hauteur fixe */
-    padding: 5px 15px;   /* un padding vertical réduit */
-    /* height: auto;  Qt l’infère si vous n’écrivez pas height */
+    padding: 10px 15px;  /* Restore original padding */
+    /* Remove margin-bottom adjustment */
 }
 
 QLabel#pageTitleLabel {
@@ -30,6 +29,7 @@ QMainWindow {
 
 QWidget#central_widget {
     background-color: #f5f5f5;
+    /* Remove margin-top and padding-top adjustments */
 }
 
 /* Sidebar styles */
@@ -296,9 +296,17 @@ QWidget {
 }
 
 #pageButton {
-    background-color: #ffffff;
+    background-color: #f5f5f5;
     border: 1px solid #e0e0e0;
     border-radius: 4px;
+    padding: 2px 6px; /* Smaller padding for compact size */
+    font-size: 11px; /* Smaller font size */
+    min-width: 20px; /* Smaller width */
+    min-height: 20px; /* Smaller height */
+}
+
+#pageButton:hover {
+    background-color: #e0e0e0;
 }
 
 #activePageButton {
@@ -306,7 +314,18 @@ QWidget {
     color: white;
     border: none;
     border-radius: 4px;
+    padding: 2px 6px; /* Smaller padding for compact size */
+    font-size: 11px; /* Smaller font size */
+    min-width: 20px; /* Smaller width */
+    min-height: 20px; /* Smaller height */
 }
+
+#paginationSection {
+    height: 35px; /* Further reduced height for the pagination section */
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
 #liveFeedWidget {
     margin: 0px;
     padding: 0px;
@@ -373,14 +392,15 @@ QWidget {
 
 /* Recording styles */
 #recordingItem {
-    background-color: #f9f9f9;
-    border: 1px solid #ddd;
-    border-radius: 10px;
+    background-color: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
     padding: 10px;
+    margin-bottom: 10px;
 }
 
 #recordingItem:hover {
-    background-color: #f1f1f1;
+    background-color: #f5f5f5;
 }
 
 #recordingTitle {
@@ -620,8 +640,34 @@ QWidget#NavButton[active="true"] {
     background-color: rgba(30,136,229,0.1);
 }
 
+#NavButton {
+    background-color: transparent;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+}
 
+#NavButton:hover {
+    background-color: #f5f5f5;
+}
 
+#NavButton[active="true"] {
+    background-color: #E3F2FD;
+    color: #1E88E5;
+    font-weight: bold;
+}
+
+#NavButton QLabel {
+    padding-left: 8px;  /* Adjust padding for compact size */
+    color: #333333;
+    font-size: 12px;  /* Minimized text size */
+    vertical-align: middle;  /* Align text vertically with the icon */
+}
+
+#NavButton[active="true"] QLabel {
+    color: #1E88E5;
+    font-weight: bold;  /* Make text bold when active */
+}
 
 #userProfileContainer {
     border-top: 1px solid #e0e0e0;
@@ -1027,8 +1073,42 @@ QPushButton#AcknowledgeButton:hover {
 
 /* Details popup styles */
 #detailsPopup {
-    background-color: #f9f9f9;
-    border: 1px solid #ddd;
-    border-radius: 10px;
+    background-color: #ffffff; /* Ensure a clean white background */
+    border: 1px solid #e0e0e0; /* Add a subtle border */
+    border-radius: 8px; /* Rounded corners for better aesthetics */
+    padding: 10px; /* Reduce padding */
+    margin-top: 10px; /* Add margin to separate it from the video player */
+    max-height: 150px; /* Reduce height */
+}
+
+#detailsPopup QLabel {
+    font-size: 12px; /* Make text slightly smaller */
+    color: #333333; /* Use a dark color for better contrast */
+    text-align: left; /* Align text horizontally */
+}
+
+/* Main content widget */
+#mainContentWidget {
+    border-radius: 12px; /* Add border radius */
+    background-color: transparent; /* Make it transparent */
     padding: 10px;
+}
+
+/* Scroll area styles */
+#playbackScrollArea {
+    border: none; /* Remove border */
+    background-color: transparent; /* Ensure transparency */
+    border-radius: 12px; /* Match the border-radius */
+}
+
+#roundedSearchBox {
+    border-radius: 16px; /* Make corners more rounded */
+    padding: 8px 12px;
+    border: 1px solid #e0e0e0;
+}
+
+#smallButton {
+    font-size: 12px; /* Make buttons smaller */
+    padding: 5px 10px;
+    border-radius: 4px;
 }
