@@ -163,7 +163,24 @@ class AlertService:
         finally:
             close_session(session)
 
-
+    def batch_acknowledge_alerts(self, alert_ids):
+        """Acknowledge multiple alerts in a single transaction."""
+        session = get_session()
+        try:
+            session.query(Alert).filter(Alert.id.in_(alert_ids)).update(
+                {
+                    Alert.is_acknowledged: True,
+                    Alert.acknowledged_at: datetime.now()
+                },
+                synchronize_session=False
+            )
+            session.commit()
+            logger.info(f"Successfully acknowledged {len(alert_ids)} alerts.")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error while acknowledging alerts: {e}")
+        finally:
+            close_session(session)
     
     def process_yolo_detection(self, alert_data):
         """Process YOLO detections and create alerts"""
