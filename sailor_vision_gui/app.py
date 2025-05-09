@@ -4,7 +4,7 @@ import os
 # Add the src directory to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QStackedWidget, QWidget, QVBoxLayout, QHBoxLayout
+from PyQt5.QtWidgets import QApplication, QMainWindow, QStackedWidget, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import QIcon, QFontDatabase, QFont
 import logging
@@ -132,6 +132,7 @@ class MainWindow(QMainWindow):
         self.sidebar.settings_clicked.connect(
             lambda: self.switch_view("Settings", None)  # To be implemented
         )
+        self.sidebar.logout_clicked.connect(self.handle_logout)  # Connect logout signal
 
         content_layout.addWidget(self.stacked_widget)
         main_layout.addWidget(content_widget, 1)  # Give content area stretch factor of 1
@@ -221,6 +222,24 @@ class MainWindow(QMainWindow):
             self.header.set_search_box_visibility(True)
             self.header.set_search_placeholder(f"Search {title.lower()}…")
             # No default action button
+
+    def handle_logout(self):
+        """Handle user logout."""
+        logger.info("User logged out")
+        QMessageBox.information(self, "Logout", "You have been logged out.")
+        self.reset_to_login_screen()
+
+    def reset_to_login_screen(self):
+        """Reset the application to the login screen."""
+        # Clean up main interface
+        self.main_layout.removeWidget(self.current_content)
+        self.current_content.deleteLater()
+        self.current_content = None
+
+        # Show login screen
+        self.login_screen = LoginScreen()
+        self.main_layout.addWidget(self.login_screen)
+        self.login_screen.login_successful.connect(self.handle_login_success)
 
     def clear_layout(self, layout):
         """Recursively clear all widgets and layouts"""
