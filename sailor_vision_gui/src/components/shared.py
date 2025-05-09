@@ -171,6 +171,8 @@ class Sidebar(QWidget):
     user_management_clicked = pyqtSignal()
     settings_clicked = pyqtSignal()
     profile_clicked = pyqtSignal()
+    view_profile_clicked = pyqtSignal()  # Signal for "View Profile" action
+    logout_clicked = pyqtSignal()       # Signal for "Logout" action
     
     def __init__(self, user_data=None):
         super().__init__()
@@ -247,41 +249,56 @@ class Sidebar(QWidget):
         if self.user_data:
             profile_container = QWidget()
             profile_container.setObjectName("userProfileContainer")
-            profile_container.setFixedHeight(70)  # Fixed height
+            profile_container.setFixedHeight(70)
             profile_layout = QHBoxLayout(profile_container)
             profile_layout.setContentsMargins(15, 10, 15, 10)
-            
-            avatar_label = QLabel()
-            avatar_label.setObjectName("userAvatar")
-            avatar_label.setFixedSize(36, 36)
+
+            self.avatar_label = QLabel()  # Store avatar_label as an instance variable
+            self.avatar_label.setObjectName("userAvatar")
+            self.avatar_label.setFixedSize(36, 36)
             default_avatar = QIcon("src/assets/icons/user.png").pixmap(36, 36)
             if not default_avatar.isNull():
-                avatar_label.setPixmap(default_avatar)
+                self.avatar_label.setPixmap(default_avatar)
             else:
-                # Fallback to system icon if custom icon not found
-                avatar_label.setPixmap(QIcon.fromTheme("user-info").pixmap(36, 36))
-            
+                self.avatar_label.setPixmap(QIcon.fromTheme("user-info").pixmap(36, 36))
+            self.avatar_label.setCursor(Qt.PointingHandCursor)
+            self.avatar_label.mousePressEvent = self.toggle_profile_menu  # Attach menu toggle
+
             user_info = QWidget()
             user_info_layout = QVBoxLayout(user_info)
             user_info_layout.setContentsMargins(10, 0, 0, 0)
             user_info_layout.setSpacing(0)
-            
+
             user_name = QLabel(self.user_data.get("first_name", "User") + " " + self.user_data.get("last_name", ""))
             user_name.setObjectName("userName")
             user_info_layout.addWidget(user_name)
-            
-            view_profile = QPushButton("View profile")
-            view_profile.setObjectName("viewProfileLink")
-            view_profile.setFlat(True)
-            view_profile.setCursor(Qt.PointingHandCursor)
-            view_profile.clicked.connect(self.on_profile_clicked)
-            user_info_layout.addWidget(view_profile)
-            
-            profile_layout.addWidget(avatar_label)
+
+            profile_layout.addWidget(self.avatar_label)
             profile_layout.addWidget(user_info)
             profile_layout.addStretch()
-            
+
             layout.addWidget(profile_container)
+
+            # Profile menu (hidden by default)
+            self.profile_menu = QFrame(self)
+            self.profile_menu.setObjectName("profileMenu")
+            self.profile_menu.setFrameShape(QFrame.StyledPanel)
+            self.profile_menu.setVisible(False)
+
+            menu_layout = QVBoxLayout(self.profile_menu)
+            menu_layout.setContentsMargins(0, 0, 0, 0)
+
+            view_profile_button = QPushButton("View Profile")
+            view_profile_button.setObjectName("viewProfileButton")
+            view_profile_button.clicked.connect(self.view_profile_clicked.emit)
+            menu_layout.addWidget(view_profile_button)
+
+            logout_button = QPushButton("Logout")
+            logout_button.setObjectName("logoutButton")
+            logout_button.clicked.connect(self.logout_clicked.emit)
+            menu_layout.addWidget(logout_button)
+
+            layout.addWidget(self.profile_menu)
         
         self.setLayout(layout)
         self.set_active_button(self.dashboard_btn)
@@ -333,6 +350,27 @@ class Sidebar(QWidget):
     
     def on_profile_clicked(self):
         self.profile_clicked.emit()
+
+    def toggle_profile_menu(self, event):
+        """Toggle the visibility of the profile menu and position it above the avatar."""
+        if self.profile_menu.isVisible():
+            self.profile_menu.setVisible(False)
+        else:
+            # Get the global position of the avatar
+            avatar_geometry = self.avatar_label.geometry()
+            global_position = self.avatar_label.mapToGlobal(avatar_geometry.topLeft())
+            
+            # Adjust the position to display the menu above the avatar
+            menu_x = global_position.x()
+            menu_y = global_position.y() - self.profile_menu.height()  # Position above the avatar
+            
+            # Ensure the menu is fully visible on the screen
+            screen_geometry = self.screen().geometry()
+            if menu_y < screen_geometry.top():
+                menu_y = screen_geometry.top() + 10  # Add some padding if it goes off-screen
+            
+            self.profile_menu.move(menu_x, menu_y)
+            self.profile_menu.setVisible(True)
 
 class CameraWidget(QFrame):
     def __init__(self, camera):
