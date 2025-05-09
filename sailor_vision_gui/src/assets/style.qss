@@ -1112,3 +1112,37 @@ QPushButton#AcknowledgeButton:hover {
     padding: 5px 10px;
     border-radius: 4px;
 }
+
+/* Profile menu styles */
+#profileMenu {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 5px;
+}
+
+#viewProfileButton, #logoutButton {
+    background-color: transparent;
+    color: #333333;
+    border: none;
+    text-align: left;
+    padding: 8px 12px;
+}
+
+#viewProfileButton:hover, #logoutButton:hover {
+    background-color: #f5f5f5;
+    color: #1E88E5;
+}
+
+#logoutButton {
+    background-color: transparent;
+    color: #333333;
+    border: none;
+    text-align: left;
+    padding: 8px 12px;
+}
+
+#logoutButton:hover {
+    background-color: #f5f5f5;
+    color: #1E88E5;
+}
