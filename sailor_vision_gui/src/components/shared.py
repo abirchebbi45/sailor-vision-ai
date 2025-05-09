@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QPushButton, QFrame, QSizePolicy, QSlider,
                             QToolButton, QLineEdit)
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QUrl
-from PyQt5.QtGui import QPixmap, QIcon, QPainter, QColor, QPen
+from PyQt5.QtGui import QPixmap, QIcon, QPainter, QColor, QPen, QPainterPath
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget  # Import QVideoWidget
 import os
@@ -263,7 +263,8 @@ class Sidebar(QWidget):
                     logger.info(f"Profile picture found at: {profile_picture_path}")
                     pixmap = QPixmap(profile_picture_path)
                     if not pixmap.isNull():
-                        self.avatar_label.setPixmap(pixmap.scaled(36, 36, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                        rounded_pixmap = self.get_rounded_pixmap(pixmap, 36)
+                        self.avatar_label.setPixmap(rounded_pixmap)
                         logger.info("Profile picture loaded successfully.")
                     else:
                         logger.error(f"Failed to load profile picture as QPixmap: {profile_picture_path}")
@@ -293,8 +294,8 @@ class Sidebar(QWidget):
 
             layout.addWidget(profile_container)
 
-            # Profile menu (hidden by default)
-            self.profile_menu = QFrame(self)
+            # Profile menu (reparented to main window)
+            self.profile_menu = QFrame(self.window())  # Reparent to the main window
             self.profile_menu.setObjectName("profileMenu")
             self.profile_menu.setFrameShape(QFrame.StyledPanel)
             self.profile_menu.setVisible(False)
@@ -312,10 +313,23 @@ class Sidebar(QWidget):
             logout_button.clicked.connect(self.logout_clicked.emit)
             menu_layout.addWidget(logout_button)
 
-            layout.addWidget(self.profile_menu)
-        
         self.setLayout(layout)
         self.set_active_button(self.dashboard_btn)
+
+    def get_rounded_pixmap(self, pixmap, size):
+        """Create a rounded version of the given QPixmap."""
+        rounded_pixmap = QPixmap(size, size)
+        rounded_pixmap.fill(Qt.transparent)
+
+        painter = QPainter(rounded_pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        path = QPainterPath()
+        path.addEllipse(0, 0, size, size)
+        painter.setClipPath(path)
+        painter.drawPixmap(0, 0, pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+        painter.end()
+
+        return rounded_pixmap
 
     def set_default_avatar(self):
         """Set the default avatar if the profile picture is missing or invalid."""
@@ -379,22 +393,27 @@ class Sidebar(QWidget):
         self.profile_clicked.emit()
 
     def toggle_profile_menu(self, event):
-        """Toggle the visibility of the profile menu and position it above the avatar."""
+        """Toggle the visibility of the profile menu and position it on top of the avatar and name."""
         if self.profile_menu.isVisible():
             self.profile_menu.setVisible(False)
         else:
-            # Get the global position of the avatar
-            avatar_geometry = self.avatar_label.geometry()
-            global_position = self.avatar_label.mapToGlobal(avatar_geometry.topLeft())
+            # Ensure the profile menu is reparented to the main window
+            if self.profile_menu.parent() != self.window():
+                self.profile_menu.setParent(self.window())
+                self.profile_menu.setWindowFlags(Qt.Popup)  # Ensure it behaves like a popup
+
+            # Get the global position of the profile container
+            profile_container_geometry = self.avatar_label.parent().geometry()
+            global_position = self.avatar_label.parent().mapToGlobal(profile_container_geometry.bottomLeft())
             
-            # Adjust the position to display the menu above the avatar
+            # Adjust the position to display the menu below the avatar and name
             menu_x = global_position.x()
-            menu_y = global_position.y() - self.profile_menu.height()  # Position above the avatar
+            menu_y = global_position.y()
             
             # Ensure the menu is fully visible on the screen
             screen_geometry = self.screen().geometry()
-            if menu_y < screen_geometry.top():
-                menu_y = screen_geometry.top() + 10  # Add some padding if it goes off-screen
+            if menu_y + self.profile_menu.height() > screen_geometry.bottom():
+                menu_y = screen_geometry.bottom() - self.profile_menu.height() - 10  # Add padding if it goes off-screen
             
             self.profile_menu.move(menu_x, menu_y)
             self.profile_menu.setVisible(True)
