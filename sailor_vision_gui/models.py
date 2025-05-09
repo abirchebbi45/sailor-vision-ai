@@ -76,6 +76,7 @@ class Recording(Base):
     id = Column(Integer, primary_key=True)
     camera_id = Column(Integer, ForeignKey("cameras.id"), nullable=False)
     file_path = Column(String(256), nullable=False)
+    name = Column(String, nullable=False)  
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime)
     duration = Column(Float)  # Duration in seconds
@@ -88,7 +89,7 @@ class Recording(Base):
     camera = relationship("Camera", back_populates="recordings")
     
     def __repr__(self):
-        return f"<Recording {self.id} from Camera {self.camera_id}>"
+        return f"<Recording {self.id} ({self.name}) from Camera {self.camera_id}>"
 
 class Alert(Base):
     __tablename__ = "alerts"
