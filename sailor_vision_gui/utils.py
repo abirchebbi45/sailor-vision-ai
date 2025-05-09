@@ -33,8 +33,8 @@ def generate_token(user_id, username, role):
     payload = {
         "user_id": user_id,
         "username": username,
-        "role": role.value if isinstance(role, enum.Enum) else role,  # Correction
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(seconds=JWT_EXPIRATION)
+        "role": role.value if isinstance(role, enum.Enum) else role,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)  # Token valid for 1 hour
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
