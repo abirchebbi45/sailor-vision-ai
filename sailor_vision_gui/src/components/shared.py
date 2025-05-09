@@ -393,28 +393,31 @@ class Sidebar(QWidget):
         self.profile_clicked.emit()
 
     def toggle_profile_menu(self, event):
-        """Toggle the visibility of the profile menu and position it on top of the avatar and name."""
+        """Toggle the visibility of the profile menu and position it above the avatar."""
         if self.profile_menu.isVisible():
             self.profile_menu.setVisible(False)
         else:
             # Ensure the profile menu is reparented to the main window
-            if self.profile_menu.parent() != self.window():
-                self.profile_menu.setParent(self.window())
+            main_window = self.window()
+            if self.profile_menu.parent() != main_window:
+                self.profile_menu.setParent(main_window)
                 self.profile_menu.setWindowFlags(Qt.Popup)  # Ensure it behaves like a popup
 
-            # Get the global position of the profile container
-            profile_container_geometry = self.avatar_label.parent().geometry()
-            global_position = self.avatar_label.parent().mapToGlobal(profile_container_geometry.bottomLeft())
-            
-            # Adjust the position to display the menu below the avatar and name
+            # Get the global position of the avatar
+            avatar_geometry = self.avatar_label.geometry()
+            global_position = self.avatar_label.mapToGlobal(avatar_geometry.topLeft())
+
+            # Adjust the position to display the menu above the avatar
             menu_x = global_position.x()
-            menu_y = global_position.y()
-            
-            # Ensure the menu is fully visible on the screen
-            screen_geometry = self.screen().geometry()
-            if menu_y + self.profile_menu.height() > screen_geometry.bottom():
-                menu_y = screen_geometry.bottom() - self.profile_menu.height() - 10  # Add padding if it goes off-screen
-            
+            menu_y = global_position.y() - self.profile_menu.height()
+
+            # Ensure the menu is fully visible within the main window
+            main_window_geometry = main_window.geometry()
+            if menu_x + self.profile_menu.width() > main_window_geometry.right():
+                menu_x = main_window_geometry.right() - self.profile_menu.width()
+            if menu_y < main_window_geometry.top():
+                menu_y = main_window_geometry.top()
+
             self.profile_menu.move(menu_x, menu_y)
             self.profile_menu.setVisible(True)
 
