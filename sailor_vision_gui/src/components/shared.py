@@ -177,6 +177,7 @@ class Sidebar(QWidget):
     def __init__(self, user_data=None):
         super().__init__()
         self.user_data = user_data
+        logger.info(f"Initializing Sidebar with user_data: {self.user_data}")
         self.active_button = None
         self.init_ui()
     
@@ -256,11 +257,24 @@ class Sidebar(QWidget):
             self.avatar_label = QLabel()  # Store avatar_label as an instance variable
             self.avatar_label.setObjectName("userAvatar")
             self.avatar_label.setFixedSize(36, 36)
-            default_avatar = QIcon("src/assets/icons/user.png").pixmap(36, 36)
-            if not default_avatar.isNull():
-                self.avatar_label.setPixmap(default_avatar)
+            profile_picture_path = self.user_data.get("profile_picture")
+            if profile_picture_path:
+                if os.path.exists(profile_picture_path):
+                    logger.info(f"Profile picture found at: {profile_picture_path}")
+                    pixmap = QPixmap(profile_picture_path)
+                    if not pixmap.isNull():
+                        self.avatar_label.setPixmap(pixmap.scaled(36, 36, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                        logger.info("Profile picture loaded successfully.")
+                    else:
+                        logger.error(f"Failed to load profile picture as QPixmap: {profile_picture_path}")
+                        self.set_default_avatar()
+                else:
+                    logger.warning(f"Profile picture path does not exist: {profile_picture_path}")
+                    self.set_default_avatar()
             else:
-                self.avatar_label.setPixmap(QIcon.fromTheme("user-info").pixmap(36, 36))
+                logger.warning("No profile picture path provided for the user.")
+                self.set_default_avatar()
+
             self.avatar_label.setCursor(Qt.PointingHandCursor)
             self.avatar_label.mousePressEvent = self.toggle_profile_menu  # Attach menu toggle
 
@@ -302,6 +316,19 @@ class Sidebar(QWidget):
         
         self.setLayout(layout)
         self.set_active_button(self.dashboard_btn)
+
+    def set_default_avatar(self):
+        """Set the default avatar if the profile picture is missing or invalid."""
+        default_avatar_path = "/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/icons/user.png"
+        if os.path.exists(default_avatar_path):
+            default_avatar = QIcon(default_avatar_path).pixmap(36, 36)
+            if not default_avatar.isNull():
+                self.avatar_label.setPixmap(default_avatar)
+                logger.info("Default avatar set successfully.")
+            else:
+                logger.error("Failed to load default avatar as QPixmap.")
+        else:
+            logger.error(f"Default avatar file does not exist at: {default_avatar_path}")
 
     def create_nav_button(self, icon_name, text, icon_path, icon_size):
         button = SidebarNavButton(icon_name, text)
