@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QPushButton, QGridLayout, QFrame, QScrollArea,
-                            QDialog, QLineEdit, QComboBox, QMessageBox)
+                            QDialog, QLineEdit, QComboBox, QMessageBox, QFileDialog)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap, QIcon
 from PyQt5.QtWidgets import QLayout, QSizePolicy
@@ -101,6 +101,19 @@ class UserDialog(QDialog):
         role_layout.addWidget(self.role_combo)
         form_layout.addLayout(role_layout)
         
+        # Profile picture field
+        picture_layout = QHBoxLayout()
+        picture_label = QLabel("Profile Picture:")
+        picture_label.setFixedWidth(100)
+        self.picture_input = QLineEdit()
+        self.picture_input.setPlaceholderText("Path to profile picture")
+        self.picture_browse_button = QPushButton("Browse")
+        self.picture_browse_button.clicked.connect(self.browse_picture)
+        picture_layout.addWidget(picture_label)
+        picture_layout.addWidget(self.picture_input)
+        picture_layout.addWidget(self.picture_browse_button)
+        form_layout.addLayout(picture_layout)
+        
         # Password field (only for new users)
         if not self.user:
             password_layout = QHBoxLayout()
@@ -139,6 +152,12 @@ class UserDialog(QDialog):
         
         layout.addLayout(buttons_layout)
     
+    def browse_picture(self):
+        """Open a file dialog to select a profile picture."""
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Profile Picture", "", "Images (*.png *.jpg *.jpeg)")
+        if file_path:
+            self.picture_input.setText(file_path)
+
     def populate_fields(self):
         """Populate the input fields with the user's existing data for editing."""
         if not self.user:
@@ -155,7 +174,10 @@ class UserDialog(QDialog):
             index = self.role_combo.findText(self.user.role.value if hasattr(self.user.role, "value") else str(self.user.role))
             if index >= 0:
                 self.role_combo.setCurrentIndex(index)
-    
+        
+        if self.user.profile_picture:
+            self.picture_input.setText(self.user.profile_picture)
+
     def save_user(self):
         """Save the user data to the database, either creating a new user or updating an existing one."""
         # Validate input
@@ -169,7 +191,8 @@ class UserDialog(QDialog):
             "first_name": self.firstname_input.text().strip(),
             "last_name": self.lastname_input.text().strip(),
             "job_title": self.job_input.text().strip(),
-            "role": self.role_combo.currentData()
+            "role": self.role_combo.currentData(),
+            "profile_picture": self.picture_input.text().strip()
         }
         
         # Add password if creating new user
