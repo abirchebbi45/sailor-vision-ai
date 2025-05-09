@@ -1,10 +1,17 @@
 import logging
-from sqlalchemy.orm.exc import NoResultFound
+import smtplib
+import os
+from email.mime.text import MIMEText
+from dotenv import load_dotenv
 from datetime import datetime
+from sqlalchemy.orm.exc import NoResultFound
+
+# Load environment variables from the specified .env file
+load_dotenv("/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/.env")
 
 from database import get_session, close_session
 from models import User
-from utils import verify_password, generate_token
+from utils import verify_password, generate_token, verify_token, hash_password
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +22,6 @@ class AuthService:
         try:
             # Find user by email
             user = session.query(User).filter(User.email == email).one()
-            
             # Verify password
             if verify_password(password, user.password_hash):
                 # Preload user data
@@ -29,7 +35,7 @@ class AuthService:
                 }
                 user.last_login = datetime.now()
                 session.commit()
-                print(f"user_data: {user_data}")
+                logger.info(f"User authenticated successfully: {email}")
                 return user_data
             else:
                 logger.warning(f"Invalid password for user: {email}")
@@ -43,42 +49,98 @@ class AuthService:
             return None
         finally:
             close_session(session)
-    
+
     def get_token(self, user):
         """Generate authentication token for user"""
         if not user:
             return None
-        
         try:
             return generate_token(user.id, user.username, user.role)
         except Exception as e:
             logger.error(f"Token generation error: {str(e)}")
             return None
-    
+
+    def send_email(self, to_email, subject, body):
+        """Send an email using Mailtrap's SMTP service"""
+        try:
+            logger.info(f"Send Email: Preparing to send email to {to_email}.")
+            
+            smtp_server = os.getenv("SMTP_SERVER")
+            smtp_port = int(os.getenv("SMTP_PORT"))
+            smtp_user = os.getenv("SMTP_USER")
+            smtp_password = os.getenv("SMTP_PASSWORD")
+            sender_email = os.getenv("EMAIL_SENDER")
+            
+            if not all([smtp_server, smtp_port, smtp_user, smtp_password, sender_email]):
+                logger.error("Send Email: Missing SMTP configuration in environment variables.")
+                return False
+            
+            # Create the email message
+            msg = MIMEText(body)
+            msg["Subject"] = subject
+            msg["From"] = sender_email
+            msg["To"] = to_email
+            
+            # Send the email
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+                server.sendmail(sender_email, [to_email], msg.as_string())
+            
+            logger.info(f"Send Email: Email successfully sent to {to_email}.")
+            return True
+        except Exception as e:
+            logger.error(f"Send Email: Error sending email to {to_email}: {str(e)}")
+            return False
+
     def reset_password_request(self, email):
         """Request password reset"""
         session = get_session()
         try:
-            # Check if user exists
-            user = session.query(User).filter(User.email == email).one()
-            
-            # In a real app, this would generate a reset token and send an email
-            # For now, we just log it
-            logger.info(f"Password reset requested for: {email}")
-            
+            logger.info(f"Reset Password Request: Searching for user with email {email}.")
+            user = session.query(User).filter(User.email == email).one_or_none()
+
+            if user:
+                reset_token = generate_token(user.id, user.username, user.role)
+                logger.info(f"Reset Password Request: Generated reset token for {email}.")
+            else:
+                reset_token = "dummy_token_for_testing"
+                logger.warning(f"Reset Password Request: Email {email} not found in database. Using dummy token.")
+
+            # Send the token via email
+            subject = "Password Reset Request"
+            body = f"Your password reset token is: {reset_token}\n\nUse this token to reset your password."
+            self.send_email(email, subject, body)
+
+            logger.info(f"Reset Password Request: Reset token sent to {email}.")
+            return reset_token
+        except Exception as e:
+            logger.error(f"Reset Password Request: Error occurred: {str(e)}")
+            return None
+        finally:
+            close_session(session)
+
+    def reset_password(self, token, new_password):
+        """Reset password using reset token"""
+        try:
+            logger.info("Reset Password: Verifying reset token.")
+            payload = verify_token(token)  # Verify the token
+            if not payload:
+                logger.warning("Reset Password: Invalid or expired token.")
+                return False
+
+            session = get_session()
+            logger.info(f"Reset Password: Searching for user with ID {payload['user_id']}.")
+            user = session.query(User).filter(User.id == payload["user_id"]).one()
+            user.password_hash = hash_password(new_password)  # Hash the new password
+            session.commit()
+            logger.info(f"Reset Password: Password reset successfully for user {user.email}.")
             return True
         except NoResultFound:
-            logger.warning(f"Password reset requested for non-existent user: {email}")
+            logger.warning("Reset Password: User not found for the provided token.")
             return False
         except Exception as e:
-            logger.error(f"Password reset request error: {str(e)}")
+            logger.error(f"Reset Password: Error occurred: {str(e)}")
             return False
         finally:
             close_session(session)
-    
-    def reset_password(self, token, new_password):
-        """Reset password using reset token"""
-        # In a real app, this would verify the token and update the password
-        # For now, we just return False
-        logger.warning("Password reset not implemented")
-        return False
