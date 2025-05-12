@@ -130,10 +130,7 @@ class CameraFeedWidget(QFrame):
         # Status indicator with colored dot and text
         self.status_indicator = QLabel(overlay_container)
         self.status_indicator.setObjectName("statusIndicator")
-        status_color = "#4CAF50" if self.camera.get("connected", True) else "#FF5252"
-        self.status_indicator.setText(f'<span style="color: {status_color}; font-size: 14px;">●</span> '
-                                       f'<span style="color: white; font-size: 12px;">'
-                                       f'{"Connected" if self.camera.get("connected", True) else "Disconnected"}</span>')
+        self.update_status_indicator()  # Dynamically set the status indicator
         overlay_layout.addWidget(self.status_indicator, 0, Qt.AlignLeft)
 
         # Expand button
@@ -199,6 +196,18 @@ class CameraFeedWidget(QFrame):
                 height: 40px;
             }
         """)
+
+    def update_status_indicator(self):
+        """
+        Updates the status indicator based on the camera's is_active field.
+        """
+        is_active = self.camera.get("connected", False)  # Default to False if not provided
+        status_color = "#4CAF50" if is_active else "#FF5252"
+        status_text = "Active" if is_active else "Inactive"
+        self.status_indicator.setText(
+            f'<span style="color: {status_color}; font-size: 14px;">●</span> '
+            f'<span style="color: white; font-size: 12px;">{status_text}</span>'
+        )
 
     def update_feed(self, pixmap):
         """
@@ -444,7 +453,7 @@ class LiveFeedScreen(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
-        # Fetch cameras from the database
+        # Fetch all cameras from the database
         self.cameras = self.camera_service.get_all_cameras()
 
         # Add camera feeds to grid
