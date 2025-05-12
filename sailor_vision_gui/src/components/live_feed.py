@@ -78,92 +78,136 @@ class AddCameraDialog(QDialog):
 
 class CameraFeedWidget(QFrame):
     expand_clicked = pyqtSignal(int)  # Signal for expand button click with camera id
-    
+
     def __init__(self, camera):
         super().__init__()
         self.camera = camera
         self.init_ui()
-        
+
     def init_ui(self):
         self.setObjectName("liveFeedWidget")
         self.setFrameShape(QFrame.StyledPanel)
-        
+
+        # Main layout for the widget
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
-        # Feed content
-        feed_container = QWidget()
+
+        # Camera feed container (to hold the feed and overlay)
+        feed_container = QFrame(self)
         feed_container.setObjectName("feedContainer")
-        feed_layout = QVBoxLayout(feed_container)
-        feed_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Status and expand button
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(10, 10, 10, 10)
-        
-        status_container = QWidget()
-        status_layout = QHBoxLayout(status_container)
-        status_layout.setContentsMargins(0, 0, 0, 0)
-        status_layout.setSpacing(5)
-        
-        # Status indicator
-        self.status_indicator = QLabel()
-        self.status_indicator.setFixedSize(12, 12)
-        self.status_indicator.setObjectName("statusIndicator")
-        status_color = "#4CAF50" if self.camera.get("connected", True) else "#FF5252"
-        self.status_indicator.setStyleSheet(f"#statusIndicator {{ background-color: {status_color}; border-radius: 6px; }}")
-        
-        status_text = QLabel("Connected" if self.camera.get("connected", True) else "Disconnected")
-        status_text.setObjectName("statusText")
-        status_layout.addWidget(self.status_indicator)
-        status_layout.addWidget(status_text)
-        
-        header_layout.addWidget(status_container, 0, Qt.AlignLeft)
-        header_layout.addStretch()
-        
-        # Expand button
-        expand_btn = QPushButton("Expand")
-        expand_btn.setObjectName("expandButton")
-        expand_btn.setCursor(Qt.PointingHandCursor)
-        expand_btn.clicked.connect(lambda: self.expand_clicked.emit(self.camera.get("id", 0)))
-        header_layout.addWidget(expand_btn, 0, Qt.AlignRight)
-        
-        feed_layout.addLayout(header_layout)
-        
-        # Camera feed (we'll simulate with an image)
-        self.feed_label = QLabel()
+        feed_container.setStyleSheet("background-color: #1a1a1a; border-radius: 8px;")
+        feed_container_layout = QVBoxLayout(feed_container)
+        feed_container_layout.setContentsMargins(0, 0, 0, 0)
+        feed_container_layout.setSpacing(0)
+
+        # Camera feed label (occupies full space)
+        self.feed_label = QLabel(feed_container)
         self.feed_label.setObjectName("cameraFeed")
         self.feed_label.setAlignment(Qt.AlignCenter)
         self.feed_label.setMinimumHeight(200)
         self.feed_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        
+        self.feed_label.setStyleSheet("background-color: #1a1a1a; border-radius: 8px;")
+        feed_container_layout.addWidget(self.feed_label)
+
+        # Display "No available live feed" if no image is provided
         if self.camera.get("image_path"):
             pixmap = QPixmap(self.camera.get("image_path"))
             if not pixmap.isNull():
                 self.feed_label.setPixmap(pixmap.scaled(
-                    self.feed_label.width(), 
+                    self.feed_label.width(),
                     self.feed_label.height(),
-                    Qt.KeepAspectRatio, 
+                    Qt.KeepAspectRatio,
                     Qt.SmoothTransformation
                 ))
             else:
-                self.feed_label.setStyleSheet("background-color: #313131;")
-                self.feed_label.setText("No feed available")
+                self.feed_label.setText("No available live feed")
+                self.feed_label.setStyleSheet("color: white; font-size: 14px;")
         else:
-            self.feed_label.setStyleSheet("background-color: #313131;")
-            self.feed_label.setText("Loading feed...")
-        
-        feed_layout.addWidget(self.feed_label)
+            self.feed_label.setText("No available live feed")
+            self.feed_label.setStyleSheet("color: white; font-size: 14px;")
+
+        # Overlay container for status and expand button
+        overlay_container = QWidget(feed_container)
+        overlay_container.setObjectName("overlayContainer")
+        overlay_container.setStyleSheet("background: transparent;")
+        overlay_layout = QHBoxLayout(overlay_container)
+        overlay_layout.setContentsMargins(10, 10, 10, 10)
+        overlay_layout.setSpacing(10)
+
+        # Status indicator with colored dot and text
+        self.status_indicator = QLabel(overlay_container)
+        self.status_indicator.setObjectName("statusIndicator")
+        status_color = "#4CAF50" if self.camera.get("connected", True) else "#FF5252"
+        self.status_indicator.setText(f'<span style="color: {status_color}; font-size: 14px;">●</span> '
+                                       f'<span style="color: white; font-size: 12px;">'
+                                       f'{"Connected" if self.camera.get("connected", True) else "Disconnected"}</span>')
+        overlay_layout.addWidget(self.status_indicator, 0, Qt.AlignLeft)
+
+        # Expand button
+        expand_btn = QPushButton("Expand", overlay_container)
+        expand_btn.setObjectName("expandButton")
+        expand_btn.setCursor(Qt.PointingHandCursor)
+        expand_btn.setStyleSheet("""
+            #expandButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 15px;
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            #expandButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        expand_btn.clicked.connect(lambda: self.expand_clicked.emit(self.camera.get("id", 0)))
+        overlay_layout.addWidget(expand_btn, 0, Qt.AlignRight)
+
+        # Add overlay container to the feed container
+        feed_container_layout.addWidget(overlay_container)
+
+        # Add feed container to the main layout
         layout.addWidget(feed_container)
-        
-        # Camera label
+
+        # Camera name label
         camera_name = QLabel(self.camera.get("name", "Camera").upper())
         camera_name.setObjectName("cameraName")
         camera_name.setAlignment(Qt.AlignCenter)
-        camera_name.setStyleSheet("font-weight: bold; padding: 10px;")
+        camera_name.setStyleSheet("""
+            font-weight: bold; 
+            padding: 8px; 
+            color: #333333; 
+            background-color: #f5f5f5;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
+        """)
         layout.addWidget(camera_name)
-    
+
+        # Apply overall widget styling
+        self.setStyleSheet("""
+            #liveFeedWidget {
+                background-color: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                margin: 5px;
+            }
+            #feedContainer {
+                position: relative;
+            }
+            #cameraFeed {
+                background-color: #1a1a1a;
+                border-radius: 8px;
+            }
+            #overlayContainer {
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 40px;
+            }
+        """)
+
     def update_feed(self, pixmap):
         """
         Updates the displayed image in the camera feed.
@@ -176,13 +220,11 @@ class CameraFeedWidget(QFrame):
             scaled_pixmap = pixmap.scaled(
                 self.feed_label.width(),
                 self.feed_label.height(),
-                Qt.KeepAspectRatio, 
+                Qt.KeepAspectRatio,
                 Qt.SmoothTransformation
             )
             self.feed_label.setPixmap(scaled_pixmap)
-            
-            # Update the status indicator to show the camera is connected
-            self.status_indicator.setStyleSheet("#statusIndicator { background-color: #4CAF50; border-radius: 6px; }")
+            self.feed_label.setText("")  # Clear any previous "No available live feed" text
 
 class ExpandedCameraWidget(QWidget):
     close_clicked = pyqtSignal()
