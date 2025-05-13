@@ -10,9 +10,6 @@ from shared.ros_image_listener import ROSImageBridge
 from PyQt5.QtCore import Qt
 import cv2
 
-from src.services.camera_service import CameraService
-from database import get_session
-
 class AddCameraDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -40,6 +37,15 @@ class AddCameraDialog(QDialog):
         self.ip_input.setPlaceholderText("Camera IP/ID")
         form_layout.addRow("Camera IP/ID:", self.ip_input)
         
+        self.username_input = QLineEdit()
+        self.username_input.setPlaceholderText("Username")
+        form_layout.addRow("Username:", self.username_input)
+        
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("Password")
+        self.password_input.setEchoMode(QLineEdit.Password)
+        form_layout.addRow("Password:", self.password_input)
+        
         self.streaming_checkbox = QCheckBox("Enable Live Streaming")
         self.streaming_checkbox.setChecked(True)
         form_layout.addRow("", self.streaming_checkbox)
@@ -65,6 +71,8 @@ class AddCameraDialog(QDialog):
         return {
             "name": self.name_input.text(),
             "ip": self.ip_input.text(),
+            "username": self.username_input.text(),
+            "password": self.password_input.text(),
             "streaming": self.streaming_checkbox.isChecked()
         }
 
@@ -130,7 +138,10 @@ class CameraFeedWidget(QFrame):
         # Status indicator with colored dot and text
         self.status_indicator = QLabel(overlay_container)
         self.status_indicator.setObjectName("statusIndicator")
-        self.update_status_indicator()  # Dynamically set the status indicator
+        status_color = "#4CAF50" if self.camera.get("connected", True) else "#FF5252"
+        self.status_indicator.setText(f'<span style="color: {status_color}; font-size: 14px;">●</span> '
+                                       f'<span style="color: white; font-size: 12px;">'
+                                       f'{"Connected" if self.camera.get("connected", True) else "Disconnected"}</span>')
         overlay_layout.addWidget(self.status_indicator, 0, Qt.AlignLeft)
 
         # Expand button
@@ -196,18 +207,6 @@ class CameraFeedWidget(QFrame):
                 height: 40px;
             }
         """)
-
-    def update_status_indicator(self):
-        """
-        Updates the status indicator based on the camera's is_active field.
-        """
-        is_active = self.camera.get("connected", False)  # Default to False if not provided
-        status_color = "#4CAF50" if is_active else "#FF5252"
-        status_text = "Active" if is_active else "Inactive"
-        self.status_indicator.setText(
-            f'<span style="color: {status_color}; font-size: 14px;">●</span> '
-            f'<span style="color: white; font-size: 12px;">{status_text}</span>'
-        )
 
     def update_feed(self, pixmap):
         """
@@ -325,10 +324,16 @@ class LiveFeedScreen(QWidget):
     def __init__(self, user_data=None, ros_node=None):
         super().__init__()
         self.user_data = user_data
-        self.db_session = get_session()  # Initialize database session
-        self.camera_service = CameraService(self.db_session)  # CameraService instance
-        # Fetch cameras from the database
-        self.cameras = self.camera_service.get_all_cameras()
+        # Sample camera data with more realistic information
+        self.cameras = [
+            {"id": 1, "name": "Cam A", "location": "Port Area", "connected": True, 
+             "image_path": "src/assets/camera_feeds/port_feed.jpg"},
+            {"id": 2, "name": "Cam B", "location": "Main Dock", "connected": True,
+             "image_path": "src/assets/camera_feeds/dock_feed.jpg"},
+            {"id": 3, "name": "Cam C", "location": "Harbor Entrance", "connected": True,
+             "image_path": "src/assets/camera_feeds/harbor_feed.jpg"},
+            {"id": 4, "name": "Cam D", "location": "Cargo Area", "connected": False}
+        ]
         # Store references to camera widgets for quick access
         self.camera_widgets = {}
         
@@ -452,28 +457,19 @@ class LiveFeedScreen(QWidget):
             item = self.cameras_grid.itemAt(i)
             if item.widget():
                 item.widget().deleteLater()
-
-        # Fetch all cameras from the database
-        self.cameras = self.camera_service.get_all_cameras()
-
+        
         # Add camera feeds to grid
         for i, camera in enumerate(self.cameras):
             row = i // 2
             col = i % 2
-            camera_feed = CameraFeedWidget({
-                "id": camera.id,
-                "name": camera.name,
-                "location": camera.location,
-                "connected": camera.is_active,
-                "image_path": camera.rtsp_url  # Assuming RTSP URL is used for the feed
-            })
+            camera_feed = CameraFeedWidget(camera)
             # Connect the expand signal to our method
             camera_feed.expand_clicked.connect(self.expand_camera)
             self.cameras_grid.addWidget(camera_feed, row, col)
-
+            
             # Store the reference
-            self.camera_widgets[camera.id] = camera_feed
-
+            self.camera_widgets[camera["id"]] = camera_feed
+    
     def expand_camera(self, camera_id):
         """
         Displays the camera in full screen when the expand button is clicked.
@@ -481,50 +477,35 @@ class LiveFeedScreen(QWidget):
         Args:
             camera_id: ID of the camera to expand.
         """
-        try:
-            # Find the camera object with the given ID
-            camera_data = next((cam for cam in self.cameras if cam.id == camera_id), None)
-            if not camera_data:
-                print(f"Camera with ID {camera_id} not found")
-                return
-
-            # Get the corresponding CameraFeedWidget
-            camera_widget = self.camera_widgets.get(camera_id)
-            if not camera_widget:
-                print(f"Camera widget for ID {camera_id} not found")
-                return
-
-            # Get the current pixmap from the camera widget if available
-            pixmap = None
-            if hasattr(camera_widget.feed_label, 'pixmap') and camera_widget.feed_label.pixmap():
-                pixmap = camera_widget.feed_label.pixmap()
-
-            # Create and display the expanded widget
-            self.expanded_camera_widget = ExpandedCameraWidget({
-                "id": camera_data.id,
-                "name": camera_data.name,
-                "location": camera_data.location,
-                "connected": camera_data.is_active,
-                "image_path": camera_data.rtsp_url
-            }, pixmap)
-            self.expanded_camera_widget.close_clicked.connect(self.close_expanded_camera)
-
-            # Add the expanded widget on top of the existing content
-            self.main_layout.addWidget(self.expanded_camera_widget)
-
-            # Hide the main content
-            self.content_widget.setVisible(False)
-
-            # If the camera is "CAM A", connect the video feed updates
-            if camera_data.name == "CAM A":
-                self.ros_bridge.image_received.connect(self.update_expanded_cam_feed, Qt.QueuedConnection)
-
-            print(f"Camera {camera_data.name} expanded")
-        except Exception as e:
-            print(f"Error expanding camera: {e}")
-            import traceback
-            traceback.print_exc()
-
+        # Find the camera and its corresponding widget
+        camera_data = next((cam for cam in self.cameras if cam["id"] == camera_id), None)
+        camera_widget = self.camera_widgets.get(camera_id)
+        
+        if not camera_data or not camera_widget:
+            print(f"Camera with ID {camera_id} not found")
+            return
+        
+        # Get the current pixmap from the camera widget if available
+        pixmap = None
+        if hasattr(camera_widget.feed_label, 'pixmap') and camera_widget.feed_label.pixmap():
+            pixmap = camera_widget.feed_label.pixmap()
+        
+        # Create and display the expanded widget
+        self.expanded_camera_widget = ExpandedCameraWidget(camera_data, pixmap)
+        self.expanded_camera_widget.close_clicked.connect(self.close_expanded_camera)
+        
+        # Add the expanded widget on top of the existing content
+        self.main_layout.addWidget(self.expanded_camera_widget)
+        
+        # Hide the main content
+        self.content_widget.setVisible(False)
+        
+        # If the camera is "Cam A", connect the video feed updates
+        if camera_data.get("name") == "Cam A":
+            self.ros_bridge.image_received.connect(self.update_expanded_cam_feed, Qt.QueuedConnection)
+        
+        print(f"Camera {camera_data.get('name')} expanded")
+    
     def close_expanded_camera(self):
         """
         Closes the expanded view and returns to the normal display.
@@ -583,7 +564,7 @@ class LiveFeedScreen(QWidget):
         """
         dialog = AddCameraDialog(self)
         result = dialog.exec_()
-
+        
         if result == QDialog.Accepted:
             camera_data = dialog.get_camera_data()
             if not camera_data["name"]:
@@ -592,20 +573,16 @@ class LiveFeedScreen(QWidget):
             if not camera_data["ip"]:
                 QMessageBox.warning(self, "Validation Error", "Camera IP/ID is required")
                 return
-
-            # Add new camera to the database
-            try:
-                self.camera_service.add_camera({
-                    "name": camera_data["name"],
-                    "ip_address": camera_data["ip"],
-                    "location": camera_data["ip"],  # Using IP as location for simplicity
-                    "rtsp_url": "",  # Placeholder for RTSP URL
-                    "is_active": True
-                })
-                self.load_cameras()  # Refresh the camera grid
-                QMessageBox.information(self, "Success", "Camera added successfully")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to add camera: {e}")
+            
+            # Add new camera
+            self.cameras.append({
+                "id": len(self.cameras) + 1,
+                "name": camera_data["name"],
+                "location": camera_data["ip"],
+                "connected": True
+            })
+            self.load_cameras()
+            QMessageBox.information(self, "Success", "Camera added successfully")
 
     def update_cam_a_feed(self, cv_image):
         """
@@ -615,18 +592,6 @@ class LiveFeedScreen(QWidget):
             cv_image: OpenCV image received from the ROS topic.
         """
         try:
-            # Find the camera with the name "CAM A"
-            cam_a = next((camera for camera in self.cameras if camera.name == "Cam A"), None)
-            if not cam_a:
-                print("Camera A not found in the database")
-                return
-
-            # Get the corresponding CameraFeedWidget
-            camera_widget = self.camera_widgets.get(cam_a.id)
-            if not camera_widget:
-                print("Camera A widget not found")
-                return
-
             # Convert the OpenCV image to QPixmap for display in PyQt
             height, width, channel = cv_image.shape
             bytes_per_line = 3 * width
@@ -642,16 +607,19 @@ class LiveFeedScreen(QWidget):
             
             print("Image received and converted to QPixmap")
             
-            # Update the feed for Camera A
-            camera_widget.update_feed(pixmap)
+            # Update all cameras for testing
+            for i in range(self.cameras_grid.count()):
+                item = self.cameras_grid.itemAt(i)
+                if item and item.widget():
+                    camera_widget = item.widget()
+                    camera_name = camera_widget.camera.get("name", "")
+                    if camera_name == "Cam A":
+                        print(f"Updating feed for {camera_name}")
+                        camera_widget.update_feed(pixmap)
+                        # Store for future reference
+                        self.camera_widgets["Cam A"] = camera_widget
+                        break
         except Exception as e:
-            print(f"Error updating feed for Camera A: {e}")
+            print(f"Error updating feed: {e}")
             import traceback
             traceback.print_exc()
-
-    def closeEvent(self, event):
-        """
-        Ensure the database session is closed when the widget is closed.
-        """
-        self.db_session.close()
-        super().closeEvent(event)
