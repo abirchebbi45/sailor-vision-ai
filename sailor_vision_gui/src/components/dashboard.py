@@ -1,12 +1,14 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QPushButton, QGridLayout, QFrame, QScrollArea,
                             QSpacerItem, QSizePolicy)
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer, QEvent
 from PyQt5.QtGui import QPixmap, QIcon, QColor, QFont, QPainter, QPen
 
 from src.services.camera_service import CameraService
+from models import Camera, Alert, SystemLog
 from src.components.shared import HeaderWidget, Sidebar
-from models import Camera
+from database import get_session
+
 
 class EnhancedCameraWidget(QFrame):
     def __init__(self, camera):
@@ -16,7 +18,7 @@ class EnhancedCameraWidget(QFrame):
         
     def init_ui(self):
         self.setObjectName("cameraWidget")
-        self.setFixedSize(360, 270)  # Adjusted size to match design
+        self.setFixedSize(240, 160)  # Further reduced size for smaller widgets
         self.setFrameShape(QFrame.StyledPanel)
         
         layout = QVBoxLayout(self)
@@ -26,7 +28,7 @@ class EnhancedCameraWidget(QFrame):
         # Camera feed container
         feed_container = QWidget()
         feed_container.setObjectName("cameraFeed")
-        feed_container.setFixedHeight(200)
+        feed_container.setFixedHeight(100)  # Reduced height for the feed container
         
         feed_layout = QVBoxLayout(feed_container)
         feed_layout.setContentsMargins(0, 0, 0, 0)
@@ -40,13 +42,10 @@ class EnhancedCameraWidget(QFrame):
         if hasattr(self.camera, 'placeholder_image') and self.camera.placeholder_image:
             pixmap = QPixmap(self.camera.placeholder_image)
             self.feed_label.setPixmap(pixmap.scaled(
-                360, 200,
+                240, 100,  # Adjusted to match the smaller widget size
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation
             ))
-            
-            # Draw detection boxes (in real app these would be dynamically updated)
-            self.draw_detection_boxes()
         else:
             self.feed_label.setText("Camera Feed")
         
@@ -57,7 +56,7 @@ class EnhancedCameraWidget(QFrame):
         info_container = QWidget()
         info_container.setObjectName("cameraInfo")
         info_layout = QVBoxLayout(info_container)
-        info_layout.setContentsMargins(15, 10, 15, 10)
+        info_layout.setContentsMargins(5, 4, 5, 4)  # Reduced left and right padding
         info_layout.setSpacing(2)
         
         # Location/name - bold and larger
@@ -65,14 +64,14 @@ class EnhancedCameraWidget(QFrame):
         location_label.setObjectName("cameraLocation")
         location_font = location_label.font()
         location_font.setBold(True)
-        location_font.setPointSize(10)
+        location_font.setPointSize(8)  # Reduced font size
         location_label.setFont(location_font)
         info_layout.addWidget(location_label)
         
         # Camera details
         details_label = QLabel(f"Camera {self.camera.name} {self.camera.location}")
         details_font = details_label.font()
-        details_font.setPointSize(9)
+        details_font.setPointSize(7)  # Reduced font size
         details_label.setFont(details_font)
         info_layout.addWidget(details_label)
         
@@ -83,14 +82,14 @@ class EnhancedCameraWidget(QFrame):
         status_layout.setSpacing(5)
         
         status_indicator = QLabel()
-        status_indicator.setFixedSize(8, 8)
+        status_indicator.setFixedSize(5, 5)  # Reduced size for the status indicator
         if self.camera.is_active:
-            status_indicator.setStyleSheet("background-color: #4CAF50; border-radius: 4px;")
+            status_indicator.setStyleSheet("background-color: #4CAF50; border-radius: 2.5px;")
         else:
-            status_indicator.setStyleSheet("background-color: #F44336; border-radius: 4px;")
+            status_indicator.setStyleSheet("background-color: #F44336; border-radius: 2.5px;")
         
         status_text = QLabel(f"Status: {'Active' if self.camera.is_active else 'Inactive'}")
-        status_text.setStyleSheet("color: #757575;")
+        status_text.setStyleSheet("color: #757575; font-size: 9px;")  # Reduced font size
         
         status_layout.addWidget(status_indicator)
         status_layout.addWidget(status_text)
@@ -180,60 +179,66 @@ class DashboardScreen(QWidget):
     def __init__(self, user_data=None):
         super().__init__()
         self.user_data = user_data
-        self.camera_service = CameraService()
+        self.camera_service = CameraService(get_session())  # Initialize CameraService
         self.init_ui()
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_data)
         self.update_timer.start(30000)  # Update every 30 seconds
         self.update_data()
-    
+        self.installEventFilter(self)  # Install event filter for responsiveness
+
     def init_ui(self):
-        # Use VBoxLayout for the main container
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
-        main_layout.setSpacing(0)  # Remove spacing
-        
         # Create a scroll area for the dashboard content
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.NoFrame)
-        scroll_area.setStyleSheet("background-color: transparent;")
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.NoFrame)
+        self.scroll_area.setStyleSheet("background-color: transparent;")
         
         # Container widget for all dashboard content
-        dashboard_widget = QWidget()
-        dashboard_layout = QVBoxLayout(dashboard_widget)
-        dashboard_layout.setContentsMargins(20, 20, 20, 20)
-        dashboard_layout.setSpacing(20)
+        self.dashboard_widget = QWidget()
+        self.dashboard_layout = QVBoxLayout(self.dashboard_widget)
+        self.dashboard_layout.setContentsMargins(10, 10, 10, 10)  # Initial margins
+        self.dashboard_layout.setSpacing(10)
         
-        # Connected Cameras Section with blurred background
-        cameras_section = SectionFrame()
-        cameras_layout = QVBoxLayout(cameras_section)
-        cameras_layout.setContentsMargins(20, 20, 20, 20)
-        cameras_layout.setSpacing(15)
+        # Active Cameras Section
+        self.cameras_section = SectionFrame()
+        self.cameras_layout = QVBoxLayout(self.cameras_section)
+        self.cameras_layout.setContentsMargins(15, 15, 15, 15)  # Match margins with the title
+        self.cameras_layout.setSpacing(10)
         
-        cameras_title = QLabel("Connected Cameras")
+        cameras_title = QLabel("Active Cameras")
         cameras_title.setObjectName("SectionTitle")
         title_font = cameras_title.font()
         title_font.setBold(True)
         title_font.setPointSize(12)
         cameras_title.setFont(title_font)
-        cameras_layout.addWidget(cameras_title)
+        self.cameras_layout.addWidget(cameras_title)
         
-        # Camera Grid
-        cameras_container = QWidget()
-        self.cameras_grid = QGridLayout(cameras_container)
-        self.cameras_grid.setHorizontalSpacing(20)
-        self.cameras_grid.setVerticalSpacing(20)
-        self.cameras_grid.setContentsMargins(0, 0, 0, 0)
-        cameras_layout.addWidget(cameras_container)
+        # Horizontal container for camera widgets
+        self.camera_flow_widget = QWidget()
+        self.camera_flow_layout = QHBoxLayout(self.camera_flow_widget)
+        self.camera_flow_layout.setContentsMargins(0, 5, 0, 0)  # Small top padding for spacing from title
+        self.camera_flow_layout.setSpacing(10)
+        self.camera_flow_layout.setAlignment(Qt.AlignLeft)  # Align cameras to the left
         
-        dashboard_layout.addWidget(cameras_section)
+        # Add the flow layout widget to the cameras layout
+        self.cameras_layout.addWidget(self.camera_flow_widget)
         
-        # Security Alerts Section with blurred background
+        # Label for additional cameras indicator
+        self.more_cameras_label = QLabel()
+        self.more_cameras_label.setObjectName("moreCamerasLabel")
+        self.more_cameras_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.more_cameras_label.setStyleSheet("color: #757575; font-style: italic; margin-top: 5px;")
+        self.more_cameras_label.setVisible(False)  # Initially hidden
+        self.cameras_layout.addWidget(self.more_cameras_label)
+        
+        self.dashboard_layout.addWidget(self.cameras_section)
+        
+        # Security Alerts Section
         alerts_section = SectionFrame()
         alerts_layout = QVBoxLayout(alerts_section)
-        alerts_layout.setContentsMargins(20, 20, 20, 20)
-        alerts_layout.setSpacing(15)
+        alerts_layout.setContentsMargins(10, 10, 10, 10)  # Adjusted margins for responsiveness
+        alerts_layout.setSpacing(10)
         
         alerts_title = QLabel("Security Alerts")
         alerts_title.setObjectName("SectionTitle")
@@ -248,13 +253,13 @@ class DashboardScreen(QWidget):
         self.alerts_container_layout.setSpacing(10)
         alerts_layout.addWidget(alerts_container)
         
-        dashboard_layout.addWidget(alerts_section)
+        self.dashboard_layout.addWidget(alerts_section)
         
-        # System Status Section with blurred background
+        # System Status Section
         status_section = SectionFrame()
         status_layout = QVBoxLayout(status_section)
-        status_layout.setContentsMargins(20, 20, 20, 20)
-        status_layout.setSpacing(15)
+        status_layout.setContentsMargins(10, 10, 10, 10)  # Adjusted margins for responsiveness
+        status_layout.setSpacing(10)
         
         status_title = QLabel("System Status")
         status_title.setObjectName("SectionTitle")
@@ -265,7 +270,7 @@ class DashboardScreen(QWidget):
         status_card = QWidget()
         status_card.setObjectName("Card")
         status_card_layout = QHBoxLayout(status_card)
-        status_card_layout.setContentsMargins(15, 15, 15, 15)
+        status_card_layout.setContentsMargins(10, 10, 10, 10)  # Adjusted margins for responsiveness
         
         status_indicator = QLabel()
         status_indicator.setFixedSize(16, 16)
@@ -295,82 +300,115 @@ class DashboardScreen(QWidget):
         status_card_layout.addWidget(view_details)
         
         status_layout.addWidget(status_card)
-        dashboard_layout.addWidget(status_section)
+        self.dashboard_layout.addWidget(status_section)
         
         # Set the scroll area widget
-        scroll_area.setWidget(dashboard_widget)
-        main_layout.addWidget(scroll_area)
-    
+        self.scroll_area.setWidget(self.dashboard_widget)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)  # Removed outer margins
+        self.main_layout.addWidget(self.scroll_area)
+
+    def eventFilter(self, source, event):
+        """Handle resize events to adjust responsiveness."""
+        if event.type() == QEvent.Resize and source is self:
+            self.adjust_responsiveness()
+        return super().eventFilter(source, event)
+
+    def adjust_responsiveness(self):
+        """Adjust the layout based on the window size."""
+        width = self.width()
+        
+        # Calculate how many camera widgets can fit in the current width
+        # Each camera is 240px wide with spacing between them
+        camera_width = 240  # Width of each camera widget
+        
+        if width < 600:
+            self.camera_flow_layout.setSpacing(5)
+            spacing = 5
+            self.cameras_layout.setContentsMargins(10, 10, 10, 10)
+            self.dashboard_layout.setContentsMargins(10, 10, 10, 10)
+        else:
+            self.camera_flow_layout.setSpacing(10)
+            spacing = 10
+            self.cameras_layout.setContentsMargins(15, 15, 15, 15)
+            self.dashboard_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # Calculate available width for cameras (accounting for margins)
+        available_width = width - 30  # Subtract left and right margins
+        
+        # Calculate how many cameras can fit in the available width
+        self.max_cameras = max(1, int(available_width / (camera_width + spacing)))
+        
+        # Force an update to the camera layout
+        self.load_cameras()
+        
+        # Force layout update
+        self.update()
+
     def update_data(self):
-        """Update all dashboard data"""
+        """Update all dashboard data."""
         self.load_cameras()
         self.load_alerts()
         self.check_system_status()
     
     def load_cameras(self):
-        """Load and display camera widgets"""
-        # Clear existing camera widgets
-        self.clear_layout(self.cameras_grid)
+        """Load and display active camera widgets."""
+        # Clear existing widgets
+        self.clear_layout(self.camera_flow_layout)
         
-        # Get cameras from service
+        # Get active cameras
         cameras = self.camera_service.get_active_cameras()
         
-        # Mock camera data if empty (for development)
-        if not cameras:
-            # Create some example cameras with maritime locations
-            example_cameras = [
-                Camera(id=1, name="A", location="Downtown", is_active=True, placeholder_image="assets/camera1.jpg"),
-                Camera(id=2, name="B", location="City Park", is_active=True, placeholder_image="assets/camera2.jpg"),
-                Camera(id=3, name="C", location="Main Entrance", is_active=True, placeholder_image="assets/camera3.jpg")
-            ]
-            cameras = example_cameras
+        # Calculate how many cameras to show and how many are remaining
+        if not hasattr(self, 'max_cameras'):
+            self.max_cameras = 3  # Default max cameras to display
         
-        # Add camera widgets to grid
-        for i, camera in enumerate(cameras):
-            row = i // 3  # 3 cameras per row
-            col = i % 3
-            camera_widget = EnhancedCameraWidget(camera)
-            self.cameras_grid.addWidget(camera_widget, row, col)
+        cameras_to_show = min(len(cameras), self.max_cameras)
+        remaining_cameras = len(cameras) - cameras_to_show
+        
+        # Add camera widgets
+        for i in range(cameras_to_show):
+            camera_widget = EnhancedCameraWidget(cameras[i])
+            self.camera_flow_layout.addWidget(camera_widget)
+        
+        # Add stretch to keep cameras aligned left
+        self.camera_flow_layout.addStretch(1)
+        
+        # Update the more cameras label
+        if remaining_cameras > 0:
+            self.more_cameras_label.setText(f"{remaining_cameras} other active {'camera' if remaining_cameras == 1 else 'cameras'}")
+            self.more_cameras_label.setVisible(True)
+        else:
+            self.more_cameras_label.setVisible(False)
     
     def load_alerts(self):
-        """Load and display security alerts"""
-        # Clear existing alerts
-        self.clear_layout(self.alerts_container_layout)
-        
-        # Mock alerts for development - Using maritime specific alerts
-        mock_alerts = [
-            {
-                "id": 1, 
-                "type": "Motion Detected", 
-                "description": "Living room camera detected motion", 
-                "location": "Living Room",
-                "time_ago": "2 mins"
-            },
-            {
-                "id": 2, 
-                "type": "Motion Detected", 
-                "description": "Living room camera detected motion", 
-                "location": "Living Room",
-                "time_ago": "2 mins"
-            },
-            {
-                "id": 3, 
-                "type": "Motion Detected", 
-                "description": "Living room camera detected motion", 
-                "location": "Living Room",
-                "time_ago": "2 mins"
+        """Load and display security alerts."""
+        self.clear_layout(self.alerts_container_layout)  # Clear existing alerts
+        session = get_session()
+        alerts = session.query(Alert).filter_by(is_acknowledged=False).order_by(Alert.timestamp.desc()).limit(10).all()
+
+        for alert in alerts:
+            alert_data = {
+                "id": alert.id,
+                "type": alert.type,
+                "description": alert.message,
+                "location": alert.camera.location if alert.camera else "Unknown",
+                "timestamp": alert.timestamp.strftime("%Y-%m-%d %H:%M:%S")
             }
-        ]
-        
-        # Add alert widgets
-        for alert in mock_alerts:
-            alert_widget = AlertWidget(alert)
+            alert_widget = AlertWidget(alert_data)
             self.alerts_container_layout.addWidget(alert_widget)
     
     def check_system_status(self):
-        """Check and update system status"""
-        # In a real app, this would check actual system status
-        self.status_text.setText("All systems operational")
+        """Check and update system status."""
+        session = get_session()
+        recent_logs = session.query(SystemLog).order_by(SystemLog.timestamp.desc()).limit(1).first()
+
+        if recent_logs and recent_logs.level == "ERROR":
+            self.status_text.setText("System issues detected")
+            self.status_text.setStyleSheet("color: #F44336;")
+        else:
+            self.status_text.setText("All systems operational")
+            self.status_text.setStyleSheet("color: #4CAF50;")
     
     def view_system_details(self):
         """Show system details dialog"""
