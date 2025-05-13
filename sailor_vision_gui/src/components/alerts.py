@@ -8,11 +8,13 @@ import json
 import logging
 import csv
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
+from sqlalchemy.orm import joinedload
 
 from shared.alert_subscriber import ROSAlertBridge
 from src.services.alert_service import AlertService
 from src.components.dashboard import SectionFrame 
 from models import AlertType, Alert
+from database import get_session, close_session
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -98,6 +100,122 @@ class AlertDetailsDialog(QDialog):
                 QMessageBox.information(self, "Success", "Notes saved and updated.")
             else:
                 QMessageBox.warning(self, "Error", "Failed to save notes.")
+
+
+class AlertItem(QFrame):
+    """A styled alert item widget for displaying alert information."""
+    acknowledge_clicked = pyqtSignal(int)
+    archive_clicked = pyqtSignal(int)
+    details_clicked = pyqtSignal(int)
+    selection_changed = pyqtSignal(int, bool)
+    
+    def __init__(self, alert, show_actions=True, show_details=False):
+        super().__init__()
+        self.alert = alert
+        self.show_actions = show_actions
+        self.show_details = show_details
+        self.init_ui()
+    
+    def init_ui(self):
+        """Initialize the UI for the alert item."""
+        self.setObjectName("alertItem")
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setMaximumHeight(70)
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(15, 10, 15, 10)
+        
+        # Left part - alert info
+        alert_info = QVBoxLayout()
+        alert_info.setSpacing(3)
+        
+        # Alert type with formatting
+        alert_type_text = self.alert.type
+        if not isinstance(alert_type_text, str) and hasattr(alert_type_text, 'value'):
+            alert_type_text = alert_type_text.value
+            
+        title = QLabel(alert_type_text)
+        title.setObjectName("alertType")
+        type_font = title.font()
+        type_font.setBold(True)
+        title.setFont(type_font)
+        alert_info.addWidget(title)
+        
+        # Get location safely without triggering lazy load
+        location = "Unknown"
+        try:
+            # Try to get the camera location if it's already loaded
+            if hasattr(self.alert, "_sa_instance_state"):
+                # Using getattr with default to avoid SQLAlchemy lazy loading
+                camera = getattr(self.alert, "camera", None)
+                if camera is not None:
+                    location = getattr(camera, "location", "Unknown") or "Unknown"
+        except Exception:
+            # If any error occurs (like detached session), use the default
+            location = "Unknown"
+            
+        # Alert description with location
+        desc_label = QLabel(f"{self.alert.message} • {location}")
+        desc_label.setObjectName("alertDescription")
+        alert_info.addWidget(desc_label)
+        
+        # Timestamp
+        try:
+            current_time = QDateTime.currentDateTime()
+            alert_time = QDateTime.fromString(self.alert.timestamp.strftime("%Y-%m-%d %H:%M:%S"), "yyyy-MM-dd HH:mm:ss")
+            minutes_ago = (current_time.toSecsSinceEpoch() - alert_time.toSecsSinceEpoch()) // 60
+            time_text = f"{minutes_ago} mins ago" if minutes_ago > 0 else "Just now"
+        except:
+            # Fallback if there's an issue with timestamp calculation
+            time_text = "Recent"
+            
+        timestamp = QLabel(time_text)
+        timestamp.setObjectName("alertTimestamp")
+        alert_info.addWidget(timestamp)
+        
+        layout.addLayout(alert_info)
+        layout.addStretch()
+        
+        # Action buttons
+        if self.show_actions:
+            # Button for acknowledging alert
+            acknowledge_btn = QPushButton("Acknowledge")
+            acknowledge_btn.setObjectName("acknowledgeButton")
+            acknowledge_btn.setCursor(Qt.PointingHandCursor)
+            acknowledge_btn.setFixedWidth(100)
+            acknowledge_btn.setStyleSheet("""
+                #acknowledgeButton {
+                    background-color: #2196F3;
+                    color: white;
+                    border-radius: 4px;
+                    padding: 6px 12px;
+                    border: none;
+                }
+                #acknowledgeButton:hover {
+                    background-color: #1976D2;
+                    color: white;
+                }
+            """)
+            acknowledge_btn.clicked.connect(lambda: self.acknowledge_clicked.emit(self.alert.id))
+            layout.addWidget(acknowledge_btn)
+            
+            # Checkbox for selection
+            self.checkbox = QCheckBox()
+            self.checkbox.stateChanged.connect(lambda state: self.selection_changed.emit(self.alert.id, state == Qt.Checked))
+            layout.addWidget(self.checkbox)
+            
+        # Details button (optional)
+        if self.show_details:
+            details_btn = QPushButton("Details")
+            details_btn.setObjectName("outlineButton")
+            details_btn.setCursor(Qt.PointingHandCursor)
+            details_btn.clicked.connect(lambda: self.details_clicked.emit(self.alert.id))
+            layout.addWidget(details_btn)
+    
+    def set_selected(self, selected):
+        """Set the checkbox state programmatically."""
+        if hasattr(self, 'checkbox'):
+            self.checkbox.setChecked(selected)
 
 
 class AlertsScreen(QWidget):
@@ -303,25 +421,41 @@ class AlertsScreen(QWidget):
     def load_alerts(self):
         """Load and display real-time alerts from the alert service."""
         self.clear_layout(self.rt_alerts_list)
-        alerts = self.alert_service.get_unacknowledged_alerts()
-
-        if alerts:
-            # Batch UI updates for better performance
-            self.rt_alerts_list_container.setUpdatesEnabled(False)
-            for alert in alerts:
-                alert_widget = AlertItem(alert, show_actions=True, show_details=True)
-                alert_widget.acknowledge_clicked.connect(self.acknowledge_alert)
-                alert_widget.archive_clicked.connect(self.archive_alert)
-                alert_widget.selection_changed.connect(self.update_selected_alerts)
-                self.rt_alerts_list.addWidget(alert_widget)
-            self.rt_alerts_list_container.setUpdatesEnabled(True)
-        else:
-            no_alerts = QLabel("No active alerts")
-            no_alerts.setObjectName("emptyStateMessage")
+        
+        try:
+            # Create a new session for this operation
+            session = get_session()
+            alerts = session.query(Alert).options(joinedload(Alert.camera)).filter(
+                Alert.is_acknowledged == False,
+                Alert.is_archived == False
+            ).order_by(Alert.timestamp.desc()).all()
+            
+            if alerts:
+                # Batch UI updates for better performance
+                self.rt_alerts_list_container.setUpdatesEnabled(False)
+                for alert in alerts:
+                    # Changed show_details to False for real-time alerts
+                    alert_widget = AlertItem(alert, show_actions=True, show_details=False)
+                    alert_widget.acknowledge_clicked.connect(self.acknowledge_alert)
+                    alert_widget.selection_changed.connect(self.update_selected_alerts)
+                    self.rt_alerts_list.addWidget(alert_widget)
+                self.rt_alerts_list_container.setUpdatesEnabled(True)
+            else:
+                no_alerts = QLabel("No active alerts")
+                no_alerts.setObjectName("emptyStateMessage")
+                no_alerts.setAlignment(Qt.AlignCenter)
+                self.rt_alerts_list.addWidget(no_alerts)
+                self.select_all_checkbox.setChecked(False)  # Reset "Select All" if no alerts
+                self.ack_selected_button.setEnabled(False)
+        except Exception as e:
+            logger.error(f"Error loading alerts: {str(e)}")
+            no_alerts = QLabel("Error loading alerts")
+            no_alerts.setObjectName("errorStateMessage")
             no_alerts.setAlignment(Qt.AlignCenter)
             self.rt_alerts_list.addWidget(no_alerts)
-            self.select_all_checkbox.setChecked(False)  # Reset "Select All" if no alerts
-            self.ack_selected_button.setEnabled(False)
+        finally:
+            # Always close the session
+            close_session(session)
     
     def toggle_select_all(self, state):
         """Select or deselect all real-time alerts based on the 'Select All' checkbox."""
@@ -350,8 +484,11 @@ class AlertsScreen(QWidget):
             QMessageBox.warning(self, "No Alerts Selected", "Please select alerts to acknowledge.")
             return
 
-        # Batch acknowledgment to reduce processing time
-        self.alert_service.batch_acknowledge_alerts(list(self.selected_alerts))
+        # Get user ID for acknowledgment
+        user_id = self.user_data.get('id') if self.user_data else None
+        
+        # Use the batch acknowledgment to reduce processing time
+        self.alert_service.batch_acknowledge_alerts(list(self.selected_alerts), user_id)
 
         # Clear selection after acknowledging
         self.selected_alerts.clear()
@@ -360,29 +497,44 @@ class AlertsScreen(QWidget):
 
         # Reload alerts and alert history
         self.load_alerts()
-        self.load_alert_history()  # Ensure the history section is updated in real time
+        self.load_alert_history()
 
     def load_alert_history(self):
         """Load and display the alert history from the alert service."""
         # Clear existing history
         self.clear_layout(self.history_list)
         
-        # Get alert history from the service
-        history = self.alert_service.get_alert_history()
-        
-        # Add alert widgets to the list
-        for alert in history:
-            alert_widget = AlertItem(alert, show_actions=False, show_details=True)
-            alert_widget.details_clicked.connect(self.show_alert_details)
+        try:
+            # Create a new session for this operation
+            session = get_session()
             
-            self.history_list.addWidget(alert_widget)
-        
-        # If no history, display a message
-        if not history:
-            no_history = QLabel("No alert history available")
-            no_history.setObjectName("emptyStateMessage")
+            # Get alert history from the database with eager loading of camera relationship
+            history = session.query(Alert).options(joinedload(Alert.camera))\
+                .filter(Alert.is_acknowledged == True)\
+                .order_by(Alert.timestamp.desc()).all()
+            
+            # Add alert widgets to the list
+            for alert in history:
+                alert_widget = AlertItem(alert, show_actions=False, show_details=True)
+                alert_widget.details_clicked.connect(self.show_alert_details)
+                
+                self.history_list.addWidget(alert_widget)
+            
+            # If no history, display a message
+            if not history:
+                no_history = QLabel("No alert history available")
+                no_history.setObjectName("emptyStateMessage")
+                no_history.setAlignment(Qt.AlignCenter)
+                self.history_list.addWidget(no_history)
+        except Exception as e:
+            logger.error(f"Error loading alert history: {str(e)}")
+            no_history = QLabel("Error loading alert history")
+            no_history.setObjectName("errorStateMessage")
             no_history.setAlignment(Qt.AlignCenter)
             self.history_list.addWidget(no_history)
+        finally:
+            # Always close the session
+            close_session(session)
     
     def acknowledge_alert(self, alert_id):
         """Mark an alert as acknowledged and refresh the UI."""
@@ -532,7 +684,6 @@ class AlertsScreen(QWidget):
             for a in filtered_rt:
                 w = AlertItem(a, show_actions=True)
                 w.acknowledge_clicked.connect(self.acknowledge_alert)
-                w.archive_clicked.connect(self.archive_alert)
                 self.rt_alerts_list.addWidget(w)
         else:
             lbl = QLabel("No matching real-time alerts")
@@ -558,88 +709,13 @@ class AlertsScreen(QWidget):
             lbl = QLabel("No matching history alerts")
             lbl.setObjectName("emptyStateMessage")
             lbl.setAlignment(Qt.AlignCenter)
-            self.history_list.addWidget(lbl)
+            self.history_list.addWidget
 
-
-class AlertItem(QFrame):
-    """A styled alert item as seen in the dashboard."""
-    acknowledge_clicked = pyqtSignal(int)
-    archive_clicked    = pyqtSignal(int)
-    details_clicked    = pyqtSignal(int)
-    selection_changed  = pyqtSignal(int, bool)
-
-    def __init__(self, alert, show_actions=True, show_details=True):
-        super().__init__()
-        self.alert        = alert
-        self.show_actions = show_actions
-        self.show_details = show_details
-        self.init_ui()
-
-    def init_ui(self):
-        """Initialize the UI for the alert item."""
-        from src.components.dashboard import SectionFrame
-        container = SectionFrame(self)
-        container.setObjectName("alertItem")
-        container.setMaximumHeight(70)
-
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(15, 8, 15, 8)
-        layout.setSpacing(12)
-
-        # Left: Information
-        info = QVBoxLayout()
-        info.setSpacing(2)
-
-        # 1) Detection type/class
-        title = QLabel(self.alert.detection_class.title())  # e.g., “Swimmer”
-        title.setObjectName("alertType")
-        f = title.font(); f.setBold(True); title.setFont(f)
-        info.addWidget(title)
-
-        # 2) Brief message
-        brief = QLabel(self.alert.message.split('\n')[0])   # first line
-        brief.setObjectName("alertDescription")
-        info.addWidget(brief)
-
-        # 3) Relative timestamp
-        ago = f"{(QDateTime.currentDateTime().secsTo(self.alert.timestamp) * -1) // 60} mins ago"
-        time = QLabel(ago)
-        time.setObjectName("alertTimestamp")
-        info.addWidget(time)
-
-        layout.addLayout(info)
-        layout.addStretch()
-
-        # Right: Buttons
-        if self.show_actions:
-            btn_ack = QPushButton("Acknowledge")
-            btn_ack.setObjectName("acknowledgeButton")
-            btn_ack.setCursor(Qt.PointingHandCursor)
-            btn_ack.setFixedWidth(100)
-            btn_ack.clicked.connect(lambda: self.acknowledge_clicked.emit(self.alert.id))
-            layout.addWidget(btn_ack)
-
-        if self.show_details:
-            btn_det = QPushButton("Details")
-            btn_det.setObjectName("outlineButton")
-            btn_det.setCursor(Qt.PointingHandCursor)
-            btn_det.clicked.connect(lambda: self.details_clicked.emit(self.alert.id))
-            layout.addWidget(btn_det)
-
-        # Selection checkbox
-        if self.show_actions:
-            self.checkbox = QCheckBox()
-            self.checkbox.stateChanged.connect(lambda state: self.selection_changed.emit(self.alert.id, state == Qt.Checked))
-            layout.addWidget(self.checkbox)
-
-        # Replace self with container for styling
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(container)
-
-    def set_selected(self, selected):
-        """Set the checkbox state programmatically."""
-        self.checkbox.setChecked(selected)
+    def refresh_alerts(self):
+        """Public method to refresh all alerts - can be called from other screens"""
+        logger.info("Refreshing alerts from external signal")
+        self.load_alerts()
+        self.load_alert_history()
 
 
 
