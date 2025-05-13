@@ -17,6 +17,10 @@ class CameraService:
         """Fetch all cameras from the database, including inactive ones."""
         return self.db_session.query(Camera).all()
 
+    def get_active_cameras(self):
+        """Fetch only active cameras from the database."""
+        return self.db_session.query(Camera).filter(Camera.is_active == True).all()
+
     def add_camera(self, camera_data):
         """Add a new camera to the database."""
         camera_data.pop("username", None)  # Remove username if present
