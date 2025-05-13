@@ -144,9 +144,17 @@ class MainWindow(QMainWindow):
         """Initialize different screens for the application"""
         self.dashboard_screen  = DashboardScreen(user_data=user_data)
         self.live_feed_screen  = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node)
-        self.alerts_screen     = AlertsScreen(user_data=user_data,    ros_node=self.ros_node)
+        self.alerts_screen     = AlertsScreen(user_data=user_data, ros_node=self.ros_node)
         self.user_management_screen = UserManagementScreen(user_data=user_data)
         self.playback_screen   = PlaybackScreen(user_data=user_data, ros_node=self.ros_node)
+
+        # Connect dashboard's navigation signal
+        self.dashboard_screen.navigate_to_alerts.connect(
+            lambda: self.switch_view("Alerts", self.alerts_screen)
+        )
+        
+        # Connect signals for cross-screen alert acknowledgment updates
+        self.dashboard_screen.alerts_acknowledged.connect(self.alerts_screen.refresh_alerts)
 
         self.stacked_widget.addWidget(self.dashboard_screen)
         self.stacked_widget.addWidget(self.live_feed_screen)
