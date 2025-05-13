@@ -99,12 +99,13 @@ QWidget#central_widget {
 #actionButton {
     background-color: #2196F3;
     color: white;
-    border-radius: 4px;
-    padding: 6px 12px;
+    border-radius: 12px; /* Increased border radius */
+    padding: 4px 10px;   /* Adjusted padding for smaller height */
+    height: 20px; 
     border: none;
 }
 #actionButton:hover {
-    background-color: #1976D2;
+    background-color: #1976D2; /* Darker shade for hover effect */
 }
 
 /* Dashboard Widgets */
@@ -699,7 +700,6 @@ QWidget#NavButton[active="true"] {
     border-radius: 16px;
     padding: 5px 10px;
     padding-left: 30px;
-    background-image: url("assets/search.svg");
     background-repeat: no-repeat;
     background-position: 10px center;
     width: 250px;
