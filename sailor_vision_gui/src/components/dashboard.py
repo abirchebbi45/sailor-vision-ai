@@ -1,13 +1,18 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QPushButton, QGridLayout, QFrame, QScrollArea,
-                            QSpacerItem, QSizePolicy)
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer, QEvent
+                            QSpacerItem, QSizePolicy, QCheckBox)
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer, QEvent, QDateTime
 from PyQt5.QtGui import QPixmap, QIcon, QColor, QFont, QPainter, QPen
 
 from src.services.camera_service import CameraService
 from models import Camera, Alert, SystemLog
 from src.components.shared import HeaderWidget, Sidebar
-from database import get_session
+from database import get_session, close_session
+from datetime import datetime
+from PyQt5.QtWidgets import QMessageBox
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class EnhancedCameraWidget(QFrame):
@@ -105,7 +110,7 @@ class AlertWidget(QFrame):
         self.init_ui()
         
     def init_ui(self):
-        self.setObjectName("alertItem")
+        #self.setObjectName("alertItem")
         self.setFrameShape(QFrame.StyledPanel)
         self.setMaximumHeight(70)  # Make alert items smaller to match design
         
@@ -161,6 +166,81 @@ class AlertWidget(QFrame):
         acknowledge_btn.clicked.connect(lambda: self.acknowledge_alert(self.alert_data.get("id")))
         layout.addWidget(acknowledge_btn)
 
+class DashboardAlertItem(QFrame):
+    """A styled alert item for the dashboard's Security Alerts section"""
+    acknowledge_clicked = pyqtSignal(int)
+    
+    def __init__(self, alert):
+        super().__init__()
+        self.alert = alert
+        self.init_ui()
+        
+    def init_ui(self):
+        """Initialize the UI for the alert item."""
+        self.setObjectName("alertItem")
+        self.setMaximumHeight(70)
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(15, 8, 15, 8)
+        layout.setSpacing(12)
+        
+        # Left: Information
+        info = QVBoxLayout()
+        info.setSpacing(2)
+        
+        # 1) Alert type
+        alert_type = self.alert.type
+        if not isinstance(alert_type, str):
+            alert_type = alert_type.value
+            
+        title = QLabel(alert_type)
+        title.setObjectName("alertType")
+        f = title.font()
+        f.setBold(True)
+        title.setFont(f)
+        info.addWidget(title)
+        
+        # 2) Brief message
+        message = self.alert.message
+        if "\n" in message:
+            message = message.split('\n')[0]  # first line only
+        brief = QLabel(f"{message} • {self.alert.camera.location if self.alert.camera else 'Unknown'}")
+        brief.setObjectName("alertDescription")
+        info.addWidget(brief)
+        
+        # 3) Relative timestamp
+        current_time = QDateTime.currentDateTime()
+        alert_time = QDateTime.fromString(self.alert.timestamp.strftime("%Y-%m-%d %H:%M:%S"), "yyyy-MM-dd HH:mm:ss")
+        minutes_ago = (current_time.toSecsSinceEpoch() - alert_time.toSecsSinceEpoch()) // 60
+        time_text = f"{minutes_ago} mins ago" if minutes_ago > 0 else "Just now"
+        time = QLabel(time_text)
+        time.setObjectName("alertTimestamp")
+        info.addWidget(time)
+        
+        layout.addLayout(info)
+        layout.addStretch()
+        
+        # Right: Acknowledge button
+        btn_ack = QPushButton("Acknowledge")
+        btn_ack.setObjectName("acknowledgeButton")
+        btn_ack.setCursor(Qt.PointingHandCursor)
+        btn_ack.setFixedWidth(100)
+        btn_ack.setStyleSheet("""
+            #acknowledgeButton {
+                background-color: #2196F3;
+                color: white;
+                border-radius: 4px;
+                padding: 6px 15px;
+                border: none;
+            }
+            #acknowledgeButton:hover {
+                background-color: #1976D2;
+                color: white;
+            }
+        """)
+        btn_ack.clicked.connect(lambda: self.acknowledge_clicked.emit(self.alert.id))
+        layout.addWidget(btn_ack)
+
 class SectionFrame(QFrame):
     """Custom frame for dashboard sections with blurred background"""
     def __init__(self, parent=None):
@@ -176,10 +256,19 @@ class SectionFrame(QFrame):
         """)
 
 class DashboardScreen(QWidget):
+    # Signal to request navigation to the alerts screen
+    navigate_to_alerts = pyqtSignal()
+    alerts_acknowledged = pyqtSignal()  # New signal for alert acknowledgment
+    
     def __init__(self, user_data=None):
         super().__init__()
         self.user_data = user_data
         self.camera_service = CameraService(get_session())  # Initialize CameraService
+        
+        # Initialize AlertService for proper alert handling
+        from src.services.alert_service import AlertService
+        self.alert_service = AlertService()
+        
         self.init_ui()
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_data)
@@ -237,21 +326,59 @@ class DashboardScreen(QWidget):
         # Security Alerts Section
         alerts_section = SectionFrame()
         alerts_layout = QVBoxLayout(alerts_section)
-        alerts_layout.setContentsMargins(10, 10, 10, 10)  # Adjusted margins for responsiveness
-        alerts_layout.setSpacing(10)
+        alerts_layout.setContentsMargins(15, 15, 15, 15)  # Match margins with the camera section
+        alerts_layout.setSpacing(8)  # Reduced spacing to make section more compact
+        
+        # Header with title and actions
+        alerts_header_layout = QHBoxLayout()
+        alerts_header_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins to reduce height
         
         alerts_title = QLabel("Security Alerts")
         alerts_title.setObjectName("SectionTitle")
         alerts_title.setFont(title_font)
-        alerts_layout.addWidget(alerts_title)
+        alerts_header_layout.addWidget(alerts_title)
         
-        # Alerts container
-        alerts_container = QWidget()
-        alerts_container.setObjectName("AlertsContainer")
-        self.alerts_container_layout = QVBoxLayout(alerts_container)
+        # View all alerts button
+        view_all_alerts = QPushButton("View All")
+        view_all_alerts.setObjectName("outlineButton")
+        view_all_alerts.setCursor(Qt.PointingHandCursor)
+        view_all_alerts.clicked.connect(self.view_all_alerts)
+        alerts_header_layout.addWidget(view_all_alerts, alignment=Qt.AlignRight)
+        
+        alerts_layout.addLayout(alerts_header_layout)
+        
+        # Alerts container with increased height
+        self.alerts_container = QScrollArea()  # Changed variable name to match later references
+        self.alerts_container.setWidgetResizable(True)
+        self.alerts_container.setObjectName("AlertsContainer")
+        self.alerts_container.setFrameShape(QFrame.NoFrame)
+        self.alerts_container.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.alerts_container.setFixedHeight(280)  # Increased height to show more alerts
+        self.alerts_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        
+        alerts_container_widget = QWidget()
+        self.alerts_container_layout = QVBoxLayout(alerts_container_widget)
         self.alerts_container_layout.setContentsMargins(0, 0, 0, 0)
-        self.alerts_container_layout.setSpacing(10)
-        alerts_layout.addWidget(alerts_container)
+        self.alerts_container_layout.setSpacing(8)  # Slightly reduced spacing between alerts
+        self.alerts_container_layout.setAlignment(Qt.AlignTop)
+        
+        self.alerts_container.setWidget(alerts_container_widget)
+        alerts_layout.addWidget(self.alerts_container)
+        
+        # Acknowledge all alerts button - with reduced height container
+        ack_button_container = QWidget()
+        ack_button_container.setFixedHeight(40)  # Reduced height for this section
+        ack_button_layout = QHBoxLayout(ack_button_container)
+        ack_button_layout.setContentsMargins(0, 0, 0, 0)
+        ack_button_layout.setAlignment(Qt.AlignRight)
+        
+        self.acknowledge_all_btn = QPushButton("Acknowledge All Alerts")
+        self.acknowledge_all_btn.setObjectName("secondaryButton")
+        self.acknowledge_all_btn.setCursor(Qt.PointingHandCursor)
+        self.acknowledge_all_btn.clicked.connect(self.acknowledge_all_alerts)
+        ack_button_layout.addWidget(self.acknowledge_all_btn)
+        
+        alerts_layout.addWidget(ack_button_container)
         
         self.dashboard_layout.addWidget(alerts_section)
         
@@ -381,22 +508,140 @@ class DashboardScreen(QWidget):
         else:
             self.more_cameras_label.setVisible(False)
     
-    def load_alerts(self):
-        """Load and display security alerts."""
-        self.clear_layout(self.alerts_container_layout)  # Clear existing alerts
+    def view_all_alerts(self):
+        """Navigate to the alerts screen if there are active alerts, otherwise show a dialog"""
         session = get_session()
-        alerts = session.query(Alert).filter_by(is_acknowledged=False).order_by(Alert.timestamp.desc()).limit(10).all()
+        # Check if there are any unacknowledged alerts
+        active_alerts = session.query(Alert).filter_by(is_acknowledged=False).count()
+        
+        if active_alerts > 0:
+            # Emit signal to navigate to alerts screen
+            self.navigate_to_alerts.emit()
+        else:
+            # Show dialog informing there are no active alerts
+            QMessageBox.information(self, "No Active Alerts", 
+                                   "There are currently no active alerts to display.",
+                                   QMessageBox.Ok)
+    
+    def acknowledge_all_alerts(self):
+        """Acknowledge all pending alerts, not just the visible ones"""
+        session = get_session()
+        try:
+            # Use the same approach as in AlertsScreen
+            alerts = session.query(Alert).filter_by(is_acknowledged=False).all()
+            
+            if not alerts:
+                QMessageBox.information(self, "No Alerts", "There are no alerts to acknowledge.")
+                return
+                
+            alert_count = len(alerts)
+            alert_ids = [alert.id for alert in alerts]
+            
+            # Use the same batch acknowledge function that works in the alerts screen
+            from src.services.alert_service import AlertService
+            alert_service = AlertService()
+            result = alert_service.batch_acknowledge_alerts(alert_ids, self.user_data['id'] if self.user_data else None)
+            
+            # Show confirmation
+            QMessageBox.information(self, "Alerts Acknowledged", 
+                                  f"{alert_count} alert{'s' if alert_count > 1 else ''} successfully acknowledged.")
+            
+            # Emit signal to notify other components that alerts have been acknowledged
+            self.alerts_acknowledged.emit()
+            
+            # Reload alerts to update the UI
+            self.load_alerts()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"An error occurred while acknowledging alerts: {str(e)}")
+        finally:
+            close_session(session)
 
-        for alert in alerts:
-            alert_data = {
-                "id": alert.id,
-                "type": alert.type,
-                "description": alert.message,
-                "location": alert.camera.location if alert.camera else "Unknown",
-                "timestamp": alert.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-            }
-            alert_widget = AlertWidget(alert_data)
-            self.alerts_container_layout.addWidget(alert_widget)
+    def acknowledge_alert(self, alert_id):
+        """Mark an alert as acknowledged and refresh the UI."""
+        try:
+            # Use the AlertService directly as done in the alerts screen
+            from src.services.alert_service import AlertService
+            alert_service = AlertService()
+            
+            # Use the same method that works in the alerts screen
+            success = alert_service.acknowledge_alert(alert_id, self.user_data['id'] if self.user_data else None)
+            
+            if success:
+                # Emit signal to notify other components that alerts have been acknowledged
+                self.alerts_acknowledged.emit()
+                
+                # Reload alerts to update the UI with the latest count
+                self.load_alerts()
+                
+                # Show a brief confirmation message
+                from PyQt5.QtWidgets import QToolTip
+                QToolTip.showText(self.mapToGlobal(self.rect().center()), "Alert acknowledged", self)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"An error occurred while acknowledging the alert: {str(e)}")
+    
+    def reset_acknowledge_button(self):
+        """Reset the acknowledge all button to its original state"""
+        self.acknowledge_all_btn.setEnabled(True)
+        self.acknowledge_all_btn.setText("Acknowledge All Alerts")
+    
+    def load_alerts(self):
+        """Load and display real-time alerts from the alert service."""
+        self.clear_layout(self.alerts_container_layout)
+        
+        try:
+            # Get unacknowledged alerts
+            session = get_session()
+            alerts = session.query(Alert).filter(Alert.is_acknowledged == False).order_by(Alert.timestamp.desc()).limit(5).all()
+            
+            # Count total unacknowledged alerts for the button text
+            total_unack_alerts = session.query(Alert).filter_by(is_acknowledged=False).count()
+            
+            # Update the acknowledge all button text to reflect the total count
+            if total_unack_alerts > 0:
+                self.acknowledge_all_btn.setText(f"Acknowledge All Alerts ({total_unack_alerts})")
+                self.acknowledge_all_btn.setEnabled(True)
+                
+                # Display the most recent alerts (limited to 5)
+                for alert in alerts:
+                    alert_widget = DashboardAlertItem(alert)
+                    alert_widget.acknowledge_clicked.connect(self.acknowledge_alert)
+                    self.alerts_container_layout.addWidget(alert_widget)
+                
+                # If there are more alerts than we're showing, add a message
+                if total_unack_alerts > 5:
+                    more_alerts_label = QLabel(f"+ {total_unack_alerts - 5} more pending alerts")
+                    more_alerts_label.setObjectName("moreAlertsLabel")
+                    more_alerts_label.setAlignment(Qt.AlignCenter)
+                    more_alerts_label.setStyleSheet("color: #757575; font-style: italic; padding: 5px;")
+                    self.alerts_container_layout.addWidget(more_alerts_label)
+                    
+                # Set fixed height for alerts container when we have alerts
+                self.alerts_container.setFixedHeight(280)
+            else:
+                no_alerts = QLabel("No active alerts")
+                no_alerts.setObjectName("emptyStateMessage")
+                no_alerts.setAlignment(Qt.AlignCenter)
+                self.alerts_container_layout.addWidget(no_alerts)
+                
+                # Reduce height when there are no alerts
+                self.alerts_container.setFixedHeight(30)  # Smaller height when empty
+                
+                # Disable the acknowledge all button
+                self.acknowledge_all_btn.setEnabled(False)
+                self.acknowledge_all_btn.setText("No Pending Alerts")
+            
+            # Always add stretch to keep alerts at the top
+            self.alerts_container_layout.addStretch()
+        except Exception as e:
+            logger.error(f"Error loading alerts: {str(e)}")
+            error_label = QLabel("Error loading alerts")
+            error_label.setObjectName("errorStateMessage")
+            error_label.setAlignment(Qt.AlignCenter)
+            self.alerts_container_layout.addWidget(error_label)
+            self.alerts_container.setFixedHeight(100)  # Smaller height on error
+        finally:
+            if 'session' in locals():
+                close_session(session)
     
     def check_system_status(self):
         """Check and update system status."""
