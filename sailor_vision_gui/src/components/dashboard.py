@@ -19,6 +19,7 @@ class EnhancedCameraWidget(QFrame):
     def __init__(self, camera):
         super().__init__()
         self.camera = camera
+        self.has_live_feed = False
         self.init_ui()
         
     def init_ui(self):
@@ -103,6 +104,32 @@ class EnhancedCameraWidget(QFrame):
         info_layout.addWidget(status_container)
         layout.addWidget(info_container)
 
+    def update_frame(self, pixmap):
+        """Update the feed with a new video frame"""
+        if pixmap and not pixmap.isNull():
+            self.has_live_feed = True
+            self.feed_label.setPixmap(pixmap.scaled(
+                240, 100,  # Match widget dimensions
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            ))
+        else:
+            self.reset_to_default()
+    
+    def reset_to_default(self):
+        """Reset to default placeholder when feed stops"""
+        self.has_live_feed = False
+        if hasattr(self.camera, 'placeholder_image') and self.camera.placeholder_image:
+            pixmap = QPixmap(self.camera.placeholder_image)
+            self.feed_label.setPixmap(pixmap.scaled(
+                240, 100,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            ))
+        else:
+            self.feed_label.setText("Camera Feed")
+            self.feed_label.setStyleSheet("color: white; background-color: #313131;")
+
 class AlertWidget(QFrame):
     def __init__(self, alert_data):
         super().__init__()
@@ -110,7 +137,7 @@ class AlertWidget(QFrame):
         self.init_ui()
         
     def init_ui(self):
-        #self.setObjectName("alertItem")
+        self.setObjectName("alertItem")
         self.setFrameShape(QFrame.StyledPanel)
         self.setMaximumHeight(70)  # Make alert items smaller to match design
         
@@ -269,6 +296,12 @@ class DashboardScreen(QWidget):
         from src.services.alert_service import AlertService
         self.alert_service = AlertService()
         
+        # Dictionary to store camera widgets by camera ID
+        self.camera_widgets = {}
+        
+        # Latest frames for each camera
+        self.camera_frames = {}
+        
         self.init_ui()
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_data)
@@ -348,7 +381,7 @@ class DashboardScreen(QWidget):
         alerts_layout.addLayout(alerts_header_layout)
         
         # Alerts container with increased height
-        self.alerts_container = QScrollArea()  # Changed variable name to match later references
+        self.alerts_container = QScrollArea()
         self.alerts_container.setWidgetResizable(True)
         self.alerts_container.setObjectName("AlertsContainer")
         self.alerts_container.setFrameShape(QFrame.NoFrame)
@@ -428,7 +461,7 @@ class DashboardScreen(QWidget):
         
         status_layout.addWidget(status_card)
         self.dashboard_layout.addWidget(status_section)
-        
+                
         # Set the scroll area widget
         self.scroll_area.setWidget(self.dashboard_widget)
         self.main_layout = QVBoxLayout(self)
@@ -444,32 +477,19 @@ class DashboardScreen(QWidget):
     def adjust_responsiveness(self):
         """Adjust the layout based on the window size."""
         width = self.width()
-        
-        # Calculate how many camera widgets can fit in the current width
-        # Each camera is 240px wide with spacing between them
         camera_width = 240  # Width of each camera widget
-        
         if width < 600:
             self.camera_flow_layout.setSpacing(5)
-            spacing = 5
             self.cameras_layout.setContentsMargins(10, 10, 10, 10)
             self.dashboard_layout.setContentsMargins(10, 10, 10, 10)
         else:
             self.camera_flow_layout.setSpacing(10)
-            spacing = 10
             self.cameras_layout.setContentsMargins(15, 15, 15, 15)
             self.dashboard_layout.setContentsMargins(15, 15, 15, 15)
         
-        # Calculate available width for cameras (accounting for margins)
         available_width = width - 30  # Subtract left and right margins
-        
-        # Calculate how many cameras can fit in the available width
-        self.max_cameras = max(1, int(available_width / (camera_width + spacing)))
-        
-        # Force an update to the camera layout
+        self.max_cameras = max(1, int(available_width / (camera_width + self.camera_flow_layout.spacing())))
         self.load_cameras()
-        
-        # Force layout update
         self.update()
 
     def update_data(self):
@@ -480,45 +500,58 @@ class DashboardScreen(QWidget):
     
     def load_cameras(self):
         """Load and display active camera widgets."""
-        # Clear existing widgets
         self.clear_layout(self.camera_flow_layout)
-        
-        # Get active cameras
+        self.camera_widgets = {}
         cameras = self.camera_service.get_active_cameras()
-        
-        # Calculate how many cameras to show and how many are remaining
         if not hasattr(self, 'max_cameras'):
-            self.max_cameras = 3  # Default max cameras to display
-        
+            self.max_cameras = 3
         cameras_to_show = min(len(cameras), self.max_cameras)
         remaining_cameras = len(cameras) - cameras_to_show
-        
-        # Add camera widgets
         for i in range(cameras_to_show):
-            camera_widget = EnhancedCameraWidget(cameras[i])
+            camera = cameras[i]
+            camera_widget = EnhancedCameraWidget(camera)
+            self.camera_widgets[camera.id] = camera_widget
+            if camera.id in self.camera_frames:
+                camera_widget.update_frame(self.camera_frames[camera.id])
             self.camera_flow_layout.addWidget(camera_widget)
-        
-        # Add stretch to keep cameras aligned left
         self.camera_flow_layout.addStretch(1)
-        
-        # Update the more cameras label
         if remaining_cameras > 0:
             self.more_cameras_label.setText(f"{remaining_cameras} other active {'camera' if remaining_cameras == 1 else 'cameras'}")
             self.more_cameras_label.setVisible(True)
         else:
             self.more_cameras_label.setVisible(False)
     
+    def update_camera_feed(self, camera_id, pixmap):
+        """Update a specific camera feed with new frame"""
+        logger.info(f"Updating feed for camera ID: {camera_id}")
+        
+        # Store the latest frame
+        self.camera_frames[camera_id] = pixmap
+        
+        # Update the camera widget if it's visible
+        if camera_id in self.camera_widgets:
+            logger.info(f"Camera {camera_id} found in widgets, updating display")
+            self.camera_widgets[camera_id].update_frame(pixmap)
+        else:
+            logger.warning(f"Camera {camera_id} not found in widgets")
+    
+    def camera_feed_stopped(self, camera_id):
+        """Handle when a camera feed stops"""
+        logger.info(f"Feed stopped for camera ID: {camera_id}")
+        
+        if camera_id in self.camera_frames:
+            del self.camera_frames[camera_id]
+        
+        if camera_id in self.camera_widgets:
+            self.camera_widgets[camera_id].reset_to_default()
+    
     def view_all_alerts(self):
         """Navigate to the alerts screen if there are active alerts, otherwise show a dialog"""
         session = get_session()
-        # Check if there are any unacknowledged alerts
         active_alerts = session.query(Alert).filter_by(is_acknowledged=False).count()
-        
         if active_alerts > 0:
-            # Emit signal to navigate to alerts screen
             self.navigate_to_alerts.emit()
         else:
-            # Show dialog informing there are no active alerts
             QMessageBox.information(self, "No Active Alerts", 
                                    "There are currently no active alerts to display.",
                                    QMessageBox.Ok)
@@ -527,53 +560,33 @@ class DashboardScreen(QWidget):
         """Acknowledge all pending alerts, not just the visible ones"""
         session = get_session()
         try:
-            # Use the same approach as in AlertsScreen
             alerts = session.query(Alert).filter_by(is_acknowledged=False).all()
-            
+            alert_ids = [alert.id for alert in alerts]
             if not alerts:
                 QMessageBox.information(self, "No Alerts", "There are no alerts to acknowledge.")
                 return
-                
             alert_count = len(alerts)
-            alert_ids = [alert.id for alert in alerts]
-            
-            # Use the same batch acknowledge function that works in the alerts screen
             from src.services.alert_service import AlertService
             alert_service = AlertService()
             result = alert_service.batch_acknowledge_alerts(alert_ids, self.user_data['id'] if self.user_data else None)
-            
-            # Show confirmation
             QMessageBox.information(self, "Alerts Acknowledged", 
                                   f"{alert_count} alert{'s' if alert_count > 1 else ''} successfully acknowledged.")
-            
-            # Emit signal to notify other components that alerts have been acknowledged
             self.alerts_acknowledged.emit()
-            
-            # Reload alerts to update the UI
             self.load_alerts()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred while acknowledging alerts: {str(e)}")
         finally:
             close_session(session)
-
+    
     def acknowledge_alert(self, alert_id):
         """Mark an alert as acknowledged and refresh the UI."""
         try:
-            # Use the AlertService directly as done in the alerts screen
             from src.services.alert_service import AlertService
             alert_service = AlertService()
-            
-            # Use the same method that works in the alerts screen
             success = alert_service.acknowledge_alert(alert_id, self.user_data['id'] if self.user_data else None)
-            
             if success:
-                # Emit signal to notify other components that alerts have been acknowledged
                 self.alerts_acknowledged.emit()
-                
-                # Reload alerts to update the UI with the latest count
                 self.load_alerts()
-                
-                # Show a brief confirmation message
                 from PyQt5.QtWidgets import QToolTip
                 QToolTip.showText(self.mapToGlobal(self.rect().center()), "Alert acknowledged", self)
         except Exception as e:
@@ -587,50 +600,32 @@ class DashboardScreen(QWidget):
     def load_alerts(self):
         """Load and display real-time alerts from the alert service."""
         self.clear_layout(self.alerts_container_layout)
-        
         try:
-            # Get unacknowledged alerts
             session = get_session()
             alerts = session.query(Alert).filter(Alert.is_acknowledged == False).order_by(Alert.timestamp.desc()).limit(5).all()
-            
-            # Count total unacknowledged alerts for the button text
             total_unack_alerts = session.query(Alert).filter_by(is_acknowledged=False).count()
-            
-            # Update the acknowledge all button text to reflect the total count
             if total_unack_alerts > 0:
                 self.acknowledge_all_btn.setText(f"Acknowledge All Alerts ({total_unack_alerts})")
                 self.acknowledge_all_btn.setEnabled(True)
-                
-                # Display the most recent alerts (limited to 5)
                 for alert in alerts:
                     alert_widget = DashboardAlertItem(alert)
                     alert_widget.acknowledge_clicked.connect(self.acknowledge_alert)
                     self.alerts_container_layout.addWidget(alert_widget)
-                
-                # If there are more alerts than we're showing, add a message
                 if total_unack_alerts > 5:
                     more_alerts_label = QLabel(f"+ {total_unack_alerts - 5} more pending alerts")
                     more_alerts_label.setObjectName("moreAlertsLabel")
                     more_alerts_label.setAlignment(Qt.AlignCenter)
                     more_alerts_label.setStyleSheet("color: #757575; font-style: italic; padding: 5px;")
                     self.alerts_container_layout.addWidget(more_alerts_label)
-                    
-                # Set fixed height for alerts container when we have alerts
                 self.alerts_container.setFixedHeight(280)
             else:
                 no_alerts = QLabel("No active alerts")
                 no_alerts.setObjectName("emptyStateMessage")
                 no_alerts.setAlignment(Qt.AlignCenter)
                 self.alerts_container_layout.addWidget(no_alerts)
-                
-                # Reduce height when there are no alerts
-                self.alerts_container.setFixedHeight(30)  # Smaller height when empty
-                
-                # Disable the acknowledge all button
+                self.alerts_container.setFixedHeight(30)
                 self.acknowledge_all_btn.setEnabled(False)
                 self.acknowledge_all_btn.setText("No Pending Alerts")
-            
-            # Always add stretch to keep alerts at the top
             self.alerts_container_layout.addStretch()
         except Exception as e:
             logger.error(f"Error loading alerts: {str(e)}")
@@ -638,37 +633,33 @@ class DashboardScreen(QWidget):
             error_label.setObjectName("errorStateMessage")
             error_label.setAlignment(Qt.AlignCenter)
             self.alerts_container_layout.addWidget(error_label)
-            self.alerts_container.setFixedHeight(100)  # Smaller height on error
+            self.alerts_container.setFixedHeight(100)
         finally:
-            if 'session' in locals():
-                close_session(session)
+            close_session(session)
     
     def check_system_status(self):
         """Check and update system status."""
         session = get_session()
         recent_logs = session.query(SystemLog).order_by(SystemLog.timestamp.desc()).limit(1).first()
-
         if recent_logs and recent_logs.level == "ERROR":
             self.status_text.setText("System issues detected")
             self.status_text.setStyleSheet("color: #F44336;")
         else:
             self.status_text.setText("All systems operational")
             self.status_text.setStyleSheet("color: #4CAF50;")
+        close_session(session)
     
     def view_system_details(self):
         """Show system details dialog"""
-        # This would open a system details dialog in a real app
         print("View system details clicked")
     
     def clear_layout(self, layout):
         """Clear all widgets from a layout"""
         if layout is None:
             return
-            
         while layout.count():
             item = layout.takeAt(0)
             widget = item.widget()
-            
             if widget:
                 widget.deleteLater()
             elif item.layout():
