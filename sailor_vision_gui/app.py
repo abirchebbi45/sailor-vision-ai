@@ -155,6 +155,10 @@ class MainWindow(QMainWindow):
         
         # Connect signals for cross-screen alert acknowledgment updates
         self.dashboard_screen.alerts_acknowledged.connect(self.alerts_screen.refresh_alerts)
+        
+        # Connect live feed signals to dashboard for camera feed synchronization
+        self.live_feed_screen.frame_updated.connect(self.dashboard_screen.update_camera_feed)
+        self.live_feed_screen.feed_stopped.connect(self.dashboard_screen.camera_feed_stopped)
 
         self.stacked_widget.addWidget(self.dashboard_screen)
         self.stacked_widget.addWidget(self.live_feed_screen)
