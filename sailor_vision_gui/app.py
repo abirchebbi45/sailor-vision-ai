@@ -172,6 +172,20 @@ class MainWindow(QMainWindow):
         self.header.set_title(title)
         self.stacked_widget.setCurrentWidget(widget)
 
+        # Also update the sidebar active button
+        if title == "Dashboard":
+            self.sidebar.set_active_button(self.sidebar.dashboard_btn)
+        elif title == "Live Feed":
+            self.sidebar.set_active_button(self.sidebar.live_feed_btn)
+        elif title == "Playback":
+            self.sidebar.set_active_button(self.sidebar.playback_btn)
+        elif title == "Alerts":
+            self.sidebar.set_active_button(self.sidebar.alerts_btn)
+        elif title == "User Management":
+            self.sidebar.set_active_button(self.sidebar.user_mgmt_btn)
+        elif title == "Settings":
+            self.sidebar.set_active_button(self.sidebar.settings_btn)
+
         # Disconnect and hide the previous action button
         try:
             self.header.action_button_clicked.disconnect()
