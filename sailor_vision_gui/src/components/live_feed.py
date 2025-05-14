@@ -321,6 +321,10 @@ class ExpandedCameraWidget(QWidget):
 
 
 class LiveFeedScreen(QWidget):
+    # Add new signals for camera feed updates
+    frame_updated = pyqtSignal(int, QPixmap)  # camera_id, frame
+    feed_stopped = pyqtSignal(int)            # camera_id
+
     def __init__(self, user_data=None, ros_node=None):
         super().__init__()
         self.user_data = user_data
@@ -642,10 +646,58 @@ class LiveFeedScreen(QWidget):
             
             # Update the feed for Camera A
             camera_widget.update_feed(pixmap)
+            
+            # Emit the frame_updated signal
+            self.frame_updated.emit(cam_a.id, pixmap)
         except Exception as e:
             print(f"Error updating feed for Camera A: {e}")
             import traceback
             traceback.print_exc()
+
+    def update_video_frame(self, frame_data, camera_id=None):
+        """
+        Update the video frame with new image data.
+        """
+        try:
+            # Process the frame data and convert to QPixmap
+            height, width, channel = frame_data.shape
+            bytes_per_line = 3 * width
+            rgb_image = cv2.cvtColor(frame_data, cv2.COLOR_BGR2RGB)
+            q_image = QImage(rgb_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_image)
+
+            # Emit the frame_updated signal with the camera ID and pixmap
+            if camera_id is not None:
+                self.frame_updated.emit(camera_id, pixmap)
+                
+            # Update the camera widget if it exists
+            if camera_id in self.camera_widgets:
+                self.camera_widgets[camera_id].update_feed(pixmap)
+        except Exception as e:
+            print(f"Error updating video frame: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def on_frame_received(self, frame_data):
+        """Handle incoming frame from ROS"""
+        try:
+            # Déterminer l'ID de la caméra qui reçoit cette frame
+            camera_id = 1  # Pour CAM A - remplacer par la logique appropriée si nécessaire
+            
+            # Mettre à jour les frames UI
+            self.update_video_frame(frame_data, camera_id)
+        except Exception as e:
+            print(f"Error handling received frame: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def stop_video_feed(self, camera_id):
+        """
+        Stop the video feed for a specific camera.
+        """
+        # Emit the feed_stopped signal
+        self.feed_stopped.emit(camera_id)
+        print(f"Stopped feed for camera ID: {camera_id}")
 
     def closeEvent(self, event):
         """
