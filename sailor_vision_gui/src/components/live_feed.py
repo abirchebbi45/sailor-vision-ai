@@ -40,6 +40,14 @@ class AddCameraDialog(QDialog):
         self.ip_input.setPlaceholderText("Camera IP/ID")
         form_layout.addRow("Camera IP/ID:", self.ip_input)
         
+        self.port_input = QLineEdit()
+        self.port_input.setPlaceholderText("Camera Port (e.g. 554)")
+        form_layout.addRow("Camera Port:", self.port_input)
+        
+        self.location_input = QLineEdit()
+        self.location_input.setPlaceholderText("Camera Location (e.g. Main Entrance)")
+        form_layout.addRow("Location:", self.location_input)
+        
         self.streaming_checkbox = QCheckBox("Enable Live Streaming")
         self.streaming_checkbox.setChecked(True)
         form_layout.addRow("", self.streaming_checkbox)
@@ -62,10 +70,17 @@ class AddCameraDialog(QDialog):
         Returns:
             dict: A dictionary containing camera details.
         """
+        # Extraire le port comme un entier s'il est numérique, sinon None
+        port = None
+        if self.port_input.text().strip() and self.port_input.text().strip().isdigit():
+            port = int(self.port_input.text().strip())
+            
         return {
             "name": self.name_input.text(),
             "ip": self.ip_input.text(),
-            "is_active": self.streaming_checkbox.isChecked()  # Link checkbox to is_active
+            "port": port,
+            "location": self.location_input.text(),
+            "is_active": self.streaming_checkbox.isChecked()
         }
 
 class CameraFeedWidget(QFrame):
@@ -600,7 +615,8 @@ class LiveFeedScreen(QWidget):
                 self.camera_service.add_camera({
                     "name": camera_data["name"],
                     "ip_address": camera_data["ip"],
-                    "location": camera_data["ip"],  # Using IP as location for simplicity
+                    "port": camera_data["port"],
+                    "location": camera_data["location"] or "Unknown Location",  # Use location from input or default
                     "rtsp_url": "",  # Placeholder for RTSP URL
                     "is_active": camera_data["is_active"]  # Save is_active status
                 })
