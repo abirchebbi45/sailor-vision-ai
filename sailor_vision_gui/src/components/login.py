@@ -99,11 +99,10 @@ class LoginScreen(QWidget):
     def forgot_password(self):
         """Handle forgot password click"""
         try:
-            # Utiliser l'email de l'utilisateur connecté
             email = self.email_input.text().strip()
             if not email:
                 logger.warning("Forgot Password: No email provided.")
-                QMessageBox.warning(self, "Input Error", "Please enter your email address in the login field.")
+                QMessageBox.warning(self, "Input Error", "Please enter your email address.")
                 return
             
             logger.info(f"Forgot Password: Attempting to send reset token to {email}.")
@@ -113,31 +112,25 @@ class LoginScreen(QWidget):
                                          f"A password reset token has been sent to {email}. "
                                          "Please check your inbox and use the token to reset your password.")
                 logger.info(f"Forgot Password: Reset token sent successfully to {email}.")
-
-                # Afficher directement la boîte de dialogue pour vérifier le jeton
                 self.reset_password()
             else:
-                logger.error(f"Forgot Password: Failed to send reset token to {email}.")
-                QMessageBox.warning(self, "Error", 
-                                    "An error occurred while sending the reset token. Please try again.")
+                logger.warning(f"Forgot Password: Email {email} not found.")
+                QMessageBox.warning(self, "Error", "Email not found. Please try again.")
+        except ConnectionError as e:
+            logger.error(f"Forgot Password: {str(e)}")
+            QMessageBox.warning(self, "Network Error", "Connection interrupted, please check your network.")
         except Exception as e:
             logger.error(f"Forgot Password: Unexpected error occurred: {str(e)}")
 
     def reset_password(self):
         """Handle password reset using token"""
         try:
-            # Request the token
             token, ok = QInputDialog.getText(self, "Reset Password", "Enter your reset token:")
-            if not ok:  # User clicked cancel
-                logger.info("Reset Password: User canceled the token input dialog.")
-                return  # Exit without showing any message
-
-            if not token.strip():  # Token is empty
+            if not ok or not token.strip():
                 logger.warning("Reset Password: Invalid or empty token provided.")
                 QMessageBox.warning(self, "Input Error", "Please provide a valid reset token.")
                 return
 
-            # Request the new password
             new_password, ok = QInputDialog.getText(self, "Reset Password", "Enter your new password:", QLineEdit.Password)
             if not ok or not new_password.strip():
                 logger.warning("Reset Password: Invalid or empty new password provided.")
@@ -150,8 +143,8 @@ class LoginScreen(QWidget):
                 QMessageBox.information(self, "Password Reset", "Your password has been successfully reset.")
                 logger.info("Reset Password: Password reset successfully.")
             else:
-                logger.error("Reset Password: Failed to reset password. Invalid token or other error.")
-                QMessageBox.warning(self, "Error", "Invalid token or an error occurred. Please try again.")
+                logger.warning("Reset Password: Invalid token or other error.")
+                QMessageBox.warning(self, "Error", "Invalid or expired token. Please try again.")
         except Exception as e:
             logger.error(f"Reset Password: Unexpected error occurred: {str(e)}")
 
