@@ -26,8 +26,17 @@ from config import load_config
 from shared.detection_recorder import DetectionRecorder
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+
+# Ensure no custom handlers are added recursively
+if not logger.hasHandlers():
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(console_handler)
 
 class MainWindow(QMainWindow):
     def __init__(self, ros_node):
@@ -153,6 +162,9 @@ class MainWindow(QMainWindow):
             lambda: self.switch_view("Alerts", self.alerts_screen)
         )
         
+        # Connect dashboard's navigation signal to live feed
+        self.dashboard_screen.navigate_to_live_feed.connect(self.handle_live_feed_navigation)
+        
         # Connect signals for cross-screen alert acknowledgment updates
         self.dashboard_screen.alerts_acknowledged.connect(self.alerts_screen.refresh_alerts)
         
@@ -165,6 +177,33 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.alerts_screen)
         self.stacked_widget.addWidget(self.user_management_screen)
         self.stacked_widget.addWidget(self.playback_screen)  # Add playback_screen to the stack
+
+    def handle_live_feed_navigation(self, camera_id):
+        """Handle navigation to the live feed screen for a specific camera."""
+        logger.info(f"Switching to Live Feed screen for camera ID: {camera_id}")
+        
+        # Make sure live_feed_screen is initialized
+        if not hasattr(self, 'live_feed_screen') or not self.live_feed_screen:
+            logger.error("Live feed screen is not initialized")
+            return
+        
+        # Check if the set_active_camera method exists
+        if not hasattr(self.live_feed_screen, 'set_active_camera'):
+            logger.error("set_active_camera method not found in LiveFeedScreen")
+            return
+        
+        try:
+            # Set active camera before switching view
+            self.live_feed_screen.set_active_camera(camera_id)
+            
+            # Switch view to Live Feed
+            self.switch_view("Live Feed", self.live_feed_screen)
+            
+            logger.info(f"Successfully navigated to Live Feed for camera ID: {camera_id}")
+        except Exception as e:
+            logger.error(f"Error navigating to Live Feed: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     def switch_view(self, title, widget):
         """Change the active view in the application"""
