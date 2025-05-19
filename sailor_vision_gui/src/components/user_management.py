@@ -210,9 +210,9 @@ class UserDialog(QDialog):
             if success:
                 self.accept()
             else:
-                QMessageBox.critical(self, "Error", "Failed to save user. Please try again.")
+                QMessageBox.critical(self, "Error", "Email or username already in use.")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
+            QMessageBox.critical(self, "Error", "Failed to save user. Please try again.")
     
     def validate_input(self):
         """Validate the user input fields to ensure all required data is provided and correct."""
