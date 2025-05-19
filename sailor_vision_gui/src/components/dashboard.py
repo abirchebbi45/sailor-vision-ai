@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QPushButton, QGridLayout, QFrame, QScrollArea,
-                            QSpacerItem, QSizePolicy, QCheckBox)
+                            QSpacerItem, QSizePolicy, QCheckBox, QGraphicsOpacityEffect)
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer, QEvent, QDateTime
 from PyQt5.QtGui import QPixmap, QIcon, QColor, QFont, QPainter, QPen
 
@@ -16,12 +16,17 @@ logger = logging.getLogger(__name__)
 
 
 class EnhancedCameraWidget(QFrame):
+    clicked = pyqtSignal(int)  # Signal to emit when the widget is clicked
+
     def __init__(self, camera):
         super().__init__()
         self.camera = camera
         self.has_live_feed = False
+        self.click_enabled = True  # Flag to prevent multiple clicks
         self.init_ui()
-        
+        self.setCursor(Qt.PointingHandCursor)  # Change cursor to hand on hover
+        self.installEventFilter(self)  # Install event filter for hover effects
+
     def init_ui(self):
         self.setObjectName("cameraWidget")
         self.setFixedSize(240, 160)  # Further reduced size for smaller widgets
@@ -104,6 +109,18 @@ class EnhancedCameraWidget(QFrame):
         info_layout.addWidget(status_container)
         layout.addWidget(info_container)
 
+        self.setStyleSheet("""
+            QFrame#cameraWidget {
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                background-color: #f9f9f9;
+            }
+            QFrame#cameraWidget:hover {
+                border: 1px solid #2196F3;
+                background-color: #e3f2fd;
+            }
+        """)
+
     def update_frame(self, pixmap):
         """Update the feed with a new video frame"""
         if pixmap and not pixmap.isNull():
@@ -129,6 +146,28 @@ class EnhancedCameraWidget(QFrame):
         else:
             self.feed_label.setText("Camera Feed")
             self.feed_label.setStyleSheet("color: white; background-color: #313131;")
+
+    def mousePressEvent(self, event):
+        """Emit the clicked signal with the camera ID when the widget is clicked."""
+        if event.button() == Qt.LeftButton and self.click_enabled:
+            logger.info(f"Camera widget clicked: {self.camera.id}")
+            self.click_enabled = False  # Disable clicking temporarily
+            self.clicked.emit(self.camera.id)
+            
+            # Re-enable clicking after a short delay
+            QTimer.singleShot(500, self.enable_click)
+    
+    def enable_click(self):
+        """Re-enable clicking after a timeout."""
+        self.click_enabled = True
+
+    def eventFilter(self, source, event):
+        """Handle hover events to add visual feedback."""
+        if event.type() == QEvent.Enter:
+            self.setGraphicsEffect(QGraphicsOpacityEffect(opacity=0.9))
+        elif event.type() == QEvent.Leave:
+            self.setGraphicsEffect(None)
+        return super().eventFilter(source, event)
 
 class AlertWidget(QFrame):
     def __init__(self, alert_data):
@@ -183,7 +222,7 @@ class AlertWidget(QFrame):
                 background-color: #2196F3;
                 color: white;
                 border-radius: 4px;
-                padding: 6px 12px;
+                padding: 6px 15px;
                 border: none;
             }
             #acknowledgeButton:hover {
@@ -286,6 +325,7 @@ class DashboardScreen(QWidget):
     # Signal to request navigation to the alerts screen
     navigate_to_alerts = pyqtSignal()
     alerts_acknowledged = pyqtSignal()  # New signal for alert acknowledgment
+    navigate_to_live_feed = pyqtSignal(int)  # Signal to navigate to the live feed screen
     
     def __init__(self, user_data=None):
         super().__init__()
@@ -468,6 +508,9 @@ class DashboardScreen(QWidget):
         self.main_layout.setContentsMargins(0, 0, 0, 0)  # Removed outer margins
         self.main_layout.addWidget(self.scroll_area)
 
+        # Connect camera widget clicks to navigation
+        self.navigate_to_live_feed.connect(self.open_live_feed_screen)
+
     def eventFilter(self, source, event):
         """Handle resize events to adjust responsiveness."""
         if event.type() == QEvent.Resize and source is self:
@@ -510,6 +553,7 @@ class DashboardScreen(QWidget):
         for i in range(cameras_to_show):
             camera = cameras[i]
             camera_widget = EnhancedCameraWidget(camera)
+            camera_widget.clicked.connect(self.navigate_to_live_feed)  # Connect click signal
             self.camera_widgets[camera.id] = camera_widget
             if camera.id in self.camera_frames:
                 camera_widget.update_frame(self.camera_frames[camera.id])
@@ -664,3 +708,26 @@ class DashboardScreen(QWidget):
                 widget.deleteLater()
             elif item.layout():
                 self.clear_layout(item.layout())
+
+    def open_live_feed_screen(self, camera_id):
+        """Navigate to the live feed screen for the selected camera."""
+        # Prevent recursion or multiple signal emissions
+        try:
+            self.clicked_camera_id = getattr(self, 'clicked_camera_id', None)
+            if self.clicked_camera_id == camera_id:
+                # Skip if already processing this camera
+                logger.info(f"Already navigating to camera ID: {camera_id}")
+                return
+                
+            self.clicked_camera_id = camera_id
+            logger.info(f"Navigating to live feed for camera ID: {camera_id}")
+            self.navigate_to_live_feed.emit(camera_id)
+            
+            # Reset after a delay
+            QTimer.singleShot(1000, self.reset_clicked_camera)
+        except Exception as e:
+            logger.error(f"Error in open_live_feed_screen: {str(e)}")
+    
+    def reset_clicked_camera(self):
+        """Reset the clicked camera ID."""
+        self.clicked_camera_id = None
