@@ -90,6 +90,9 @@ class AuthService:
             
             logger.info(f"Send Email: Email successfully sent to {to_email}.")
             return True
+        except (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, smtplib.SMTPException) as e:
+            logger.error(f"Send Email: Network error occurred while sending email to {to_email}: {str(e)}")
+            raise ConnectionError("Connection interrupted, please check your network.")
         except Exception as e:
             logger.error(f"Send Email: Error sending email to {to_email}: {str(e)}")
             return False
@@ -101,14 +104,13 @@ class AuthService:
             logger.info(f"Reset Password Request: Searching for user with email {email}.")
             user = session.query(User).filter(User.email == email).one_or_none()
 
-            if user:
-                reset_token = generate_token(user.id, user.username, user.role)
-                logger.info(f"Reset Password Request: Generated reset token for {email}.")
-            else:
-                reset_token = "dummy_token_for_testing"
-                logger.warning(f"Reset Password Request: Email {email} not found in database. Using dummy token.")
+            if not user:
+                logger.warning(f"Reset Password Request: Email {email} not found in database.")
+                return None
 
-            # Send the token via email
+            reset_token = generate_token(user.id, user.username, user.role)
+            logger.info(f"Reset Password Request: Generated reset token for {email}.")
+
             subject = "Password Reset Request"
             body = f"Your password reset token is: {reset_token}\n\nUse this token to reset your password."
             self.send_email(email, subject, body)
@@ -125,21 +127,22 @@ class AuthService:
         """Reset password using reset token"""
         try:
             logger.info("Reset Password: Verifying reset token.")
-            payload = verify_token(token)  # Verify the token
+            payload = verify_token(token)
             if not payload:
                 logger.warning("Reset Password: Invalid or expired token.")
                 return False
 
             session = get_session()
             logger.info(f"Reset Password: Searching for user with ID {payload['user_id']}.")
-            user = session.query(User).filter(User.id == payload["user_id"]).one()
-            user.password_hash = hash_password(new_password)  # Hash the new password
+            user = session.query(User).filter(User.id == payload["user_id"]).one_or_none()
+            if not user:
+                logger.warning("Reset Password: User not found for the provided token.")
+                return False
+
+            user.password_hash = hash_password(new_password)
             session.commit()
             logger.info(f"Reset Password: Password reset successfully for user {user.email}.")
             return True
-        except NoResultFound:
-            logger.warning("Reset Password: User not found for the provided token.")
-            return False
         except Exception as e:
             logger.error(f"Reset Password: Error occurred: {str(e)}")
             return False
