@@ -236,3 +236,85 @@ class AlertService:
         except Exception as e:
             logger.error(f"Error processing detections: {str(e)}")
             return False
+
+    def has_unacknowledged_alerts(self):
+        """Check if there are any unacknowledged alerts."""
+        session = get_session()
+        try:
+            count = session.query(Alert).filter_by(is_acknowledged=False).count()
+            return count > 0
+        finally:
+            close_session(session)
+
+    def acknowledge_all_alerts(self, user_id=None):
+        """Acknowledge all unacknowledged alerts at once.
+        
+        Args:
+            user_id: Optional user ID to associate with the acknowledgment
+            
+        Returns:
+            Number of alerts that were acknowledged
+        """
+        current_time = datetime.now()
+        count = 0
+        
+        session = get_session()
+        try:
+            alerts = session.query(Alert).filter_by(is_acknowledged=False).all()
+            count = len(alerts)
+            
+            for alert in alerts:
+                alert.is_acknowledged = True
+                alert.acknowledged_at = current_time
+                if user_id:
+                    alert.acknowledged_by = user_id
+            
+            session.commit()
+            return count
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error acknowledging all alerts: {e}")
+            return 0
+        finally:
+            close_session(session)
+
+    def batch_acknowledge_alerts(self, alert_ids, user_id=None):
+        """Acknowledge multiple alerts by their IDs.
+        
+        Args:
+            alert_ids: List of alert IDs to acknowledge
+            user_id: Optional user ID to associate with the acknowledgment
+            
+        Returns:
+            Number of alerts that were acknowledged
+        """
+        if not alert_ids:
+            return 0
+        
+        current_time = datetime.now()
+        count = 0
+        
+        session = get_session()
+        try:
+            # For each alert ID in the list
+            for alert_id in alert_ids:
+                # Find the alert by ID
+                alert = session.query(Alert).filter(Alert.id == alert_id).first()
+                if alert and not alert.is_acknowledged:
+                    # Mark as acknowledged
+                    alert.is_acknowledged = True
+                    alert.acknowledged_at = current_time
+                    if user_id:
+                        alert.acknowledged_by = user_id
+                    count += 1
+            
+            # Commit all changes
+            session.commit()
+            logger.info(f"Successfully acknowledged {count} alerts")
+            return count
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error batch acknowledging alerts: {e}")
+            return 0
+        finally:
+            close_session(session)
