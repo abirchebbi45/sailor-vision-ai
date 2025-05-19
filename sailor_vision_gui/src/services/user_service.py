@@ -63,7 +63,7 @@ class UserService:
         existing_user = self.get_user_by_email(user_data.get('email')) or self.get_user_by_username(user_data.get('username'))
         if existing_user:
             logger.warning(f"User with email {user_data.get('email')} or username {user_data.get('username')} already exists")
-            return False
+            return False  # Indicate failure due to duplicate email/username
         
         session = get_session()
         try:
