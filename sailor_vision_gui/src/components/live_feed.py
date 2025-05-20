@@ -392,6 +392,7 @@ class LiveFeedScreen(QWidget):
         self.db_session = get_session()  # Initialize database session
         self.camera_service = CameraService(self.db_session)  # CameraService instance
         self.cameras = self.camera_service.get_all_cameras()
+        self.filtered_cameras = self.cameras  # Ajouté: liste filtrée
         self.camera_widgets = {}
         self.expanded_camera_widget = None
         
@@ -492,15 +493,22 @@ class LiveFeedScreen(QWidget):
             }
         """)
     
-    def load_cameras(self):
+    def load_cameras(self, cameras=None):
+        """
+        Charge et affiche les caméras dans la grille.
+        Si cameras est None, utilise self.filtered_cameras.
+        """
         for i in reversed(range(self.cameras_grid.count())):
             item = self.cameras_grid.itemAt(i)
             if item.widget():
                 item.widget().deleteLater()
 
-        self.cameras = self.camera_service.get_all_cameras()
+        if cameras is None:
+            cameras = self.filtered_cameras
 
-        for i, camera in enumerate(self.cameras):
+        self.camera_widgets = {}  # Réinitialiser les widgets
+
+        for i, camera in enumerate(cameras):
             row = i // 2
             col = i % 2
             camera_feed = CameraFeedWidget({
@@ -514,6 +522,20 @@ class LiveFeedScreen(QWidget):
             self.cameras_grid.addWidget(camera_feed, row, col)
 
             self.camera_widgets[camera.id] = camera_feed
+
+    def filter_cameras(self, text):
+        """
+        Filtre les caméras selon le texte (nom ou localisation).
+        """
+        text = text.strip().lower()
+        if not text:
+            self.filtered_cameras = self.cameras
+        else:
+            self.filtered_cameras = [
+                cam for cam in self.cameras
+                if text in (cam.name or '').lower() or text in (cam.location or '').lower()
+            ]
+        self.load_cameras(self.filtered_cameras)
 
     def expand_camera(self, camera_id):
         try:
