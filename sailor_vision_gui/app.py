@@ -257,6 +257,8 @@ class MainWindow(QMainWindow):
             self.header.action_button_clicked.connect(
                 self.live_feed_screen.show_add_camera_dialog
             )
+            # Connect search to camera filter
+            self.header.search_text_changed.connect(self.live_feed_screen.filter_cameras)
 
         elif title == "Alerts":
             # Show the search box and change the placeholder
