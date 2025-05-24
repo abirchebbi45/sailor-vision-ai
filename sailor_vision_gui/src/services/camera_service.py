@@ -46,3 +46,12 @@ class CameraService:
             camera.is_active = False
             self.db_session.commit()
         return camera
+
+    def set_camera_active(self, camera_id, active=True):
+        """Set camera is_active status."""
+        camera = self.db_session.query(Camera).filter(Camera.id == camera_id).first()
+        if camera:
+            camera.is_active = active
+            self.db_session.commit()
+            self.db_session.flush()  # Ajouté pour forcer la synchro immédiate
+        return camera
