@@ -8,7 +8,8 @@ import datetime
 import logging
 import os
 
-from ..services.camera_service import CameraService
+from services.camera_service import CameraService
+from database import get_session
 from ..services.storage_service import StorageService
 from src.components.dashboard import SectionFrame 
 from ..components.shared import HeaderWidget, VideoPlayerWidget
@@ -146,7 +147,8 @@ class PlaybackScreen(QWidget):
         super().__init__()
         self.user_data = user_data
         self.ros_node = ros_node
-        self.camera_service = CameraService()
+        self.db_session = get_session()  # Obtain a database session
+        self.camera_service = CameraService(db_session=self.db_session)
         self.storage_service = StorageService()
         
         # State and configuration
