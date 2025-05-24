@@ -252,11 +252,6 @@ class MainWindow(QMainWindow):
         elif title == "Live Feed":
             self.header.set_search_box_visibility(True)
             self.header.set_search_placeholder("Search cameras...")
-            # Enable the "Add Camera" button
-            self.header.set_action_button("Add Camera", visible=True)
-            self.header.action_button_clicked.connect(
-                self.live_feed_screen.show_add_camera_dialog
-            )
             # Connect search to camera filter
             self.header.search_text_changed.connect(self.live_feed_screen.filter_cameras)
 
