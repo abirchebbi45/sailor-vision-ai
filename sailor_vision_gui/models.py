@@ -54,9 +54,7 @@ class Camera(Base):
     name = Column(String(100), nullable=False)
     ip_address = Column(String(50))
     port = Column(Integer)
-    username = Column(String(50))
-    password_hash = Column(String(256))
-    location = Column(String(100))
+    location = Column(String(100), nullable=True)  # Ensure location is nullable
     rtsp_url = Column(String(256))
     is_active = Column(Boolean, default=True)
     is_recording = Column(Boolean, default=False)
