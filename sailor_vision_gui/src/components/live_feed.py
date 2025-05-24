@@ -14,79 +14,14 @@ from src.services.camera_service import CameraService
 from database import get_session
 
 import logging
+import json
+from std_msgs.msg import String as ROSString
+
 logger = logging.getLogger(__name__)
-
-class AddCameraDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.init_ui()
-    
-    def init_ui(self):
-        self.setWindowTitle("Add a New Camera")
-        self.setMinimumWidth(400)
-        
-        layout = QVBoxLayout()
-        
-        title_label = QLabel("Add a New Camera")
-        title_label.setObjectName("DialogTitle")
-        layout.addWidget(title_label)
-        
-        form_layout = QFormLayout()
-        form_layout.setVerticalSpacing(10)
-        form_layout.setHorizontalSpacing(20)
-        
-        self.name_input = QLineEdit()
-        self.name_input.setPlaceholderText("Camera Name")
-        form_layout.addRow("Camera Name:", self.name_input)
-        
-        self.ip_input = QLineEdit()
-        self.ip_input.setPlaceholderText("Camera IP/ID")
-        form_layout.addRow("Camera IP/ID:", self.ip_input)
-        
-        self.port_input = QLineEdit()
-        self.port_input.setPlaceholderText("Camera Port (e.g. 554)")
-        form_layout.addRow("Camera Port:", self.port_input)
-        
-        self.location_input = QLineEdit()
-        self.location_input.setPlaceholderText("Camera Location (e.g. Main Entrance)")
-        form_layout.addRow("Location:", self.location_input)
-        
-        self.streaming_checkbox = QCheckBox("Enable Live Streaming")
-        self.streaming_checkbox.setChecked(True)
-        form_layout.addRow("", self.streaming_checkbox)
-        
-        layout.addLayout(form_layout)
-        
-        button_box = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        
-        layout.addSpacing(20)
-        layout.addWidget(button_box)
-        
-        self.setLayout(layout)
-    
-    def get_camera_data(self):
-        """
-        Retrieves the camera data entered in the dialog.
-
-        Returns:
-            dict: A dictionary containing camera details.
-        """
-        port = None
-        if self.port_input.text().strip() and self.port_input.text().strip().isdigit():
-            port = int(self.port_input.text().strip())
-            
-        return {
-            "name": self.name_input.text(),
-            "ip": self.ip_input.text(),
-            "port": port,
-            "location": self.location_input.text(),
-            "is_active": self.streaming_checkbox.isChecked()
-        }
 
 class CameraFeedWidget(QFrame):
     expand_clicked = pyqtSignal(int)  # Signal for expand button click with camera id
+    FEED_TIMEOUT_MS = 3000  # 3 seconds
 
     def __init__(self, camera):
         super().__init__()
@@ -94,6 +29,11 @@ class CameraFeedWidget(QFrame):
         self.current_pixmap = None  # Stockez le pixmap actuel pour le redimensionnement
         self.last_update_time = 0  # Timestamp of the last frame update
         self.update_interval = 0.033  # Minimum interval between updates (30 FPS)
+        self.feed_timer = QTimer(self)
+        self.feed_timer.setInterval(self.FEED_TIMEOUT_MS)
+        self.feed_timer.setSingleShot(True)
+        self.feed_timer.timeout.connect(self.handle_feed_timeout)
+        self.feed_active = False
         self.init_ui()
 
     def init_ui(self):
@@ -122,23 +62,6 @@ class CameraFeedWidget(QFrame):
         self.feed_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.feed_label.setStyleSheet("background-color: #1a1a1a; border-radius: 8px;")
         feed_container_layout.addWidget(self.feed_label)
-
-        if self.camera.get("image_path"):
-            pixmap = QPixmap(self.camera.get("image_path"))
-            if not pixmap.isNull():
-                self.current_pixmap = pixmap
-                self.feed_label.setPixmap(pixmap.scaled(
-                    self.feed_label.width(),
-                    self.feed_label.height(),
-                    Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation
-                ))
-            else:
-                self.feed_label.setText("No available live feed")
-                self.feed_label.setStyleSheet("color: white; font-size: 14px; background-color: #1a1a1a; border-radius: 8px;")
-        else:
-            self.feed_label.setText("No available live feed")
-            self.feed_label.setStyleSheet("color: white; font-size: 14px; background-color: #1a1a1a; border-radius: 8px;")
 
         overlay_container = QWidget(feed_container)
         overlay_container.setObjectName("overlayContainer")
@@ -206,6 +129,31 @@ class CameraFeedWidget(QFrame):
             }
         """)
 
+        if self.camera.get("image_path"):
+            pixmap = QPixmap(self.camera.get("image_path"))
+            if not pixmap.isNull():
+                self.current_pixmap = pixmap
+                self.feed_label.setPixmap(pixmap.scaled(
+                    self.feed_label.width(),
+                    self.feed_label.height(),
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                ))
+                self.set_feed_active(True)
+            else:
+                self.set_feed_active(False)
+        else:
+            self.set_feed_active(False)
+
+    def set_feed_active(self, active: bool):
+        self.feed_active = active
+        self.camera["is_active"] = active
+        self.update_status_indicator()
+        if not active:
+            self.feed_label.setText("No available live feed")
+            self.feed_label.setStyleSheet("color: white; font-size: 14px; background-color: #1a1a1a; border-radius: 8px;")
+            self.current_pixmap = None
+
     def update_status_indicator(self):
         """
         Updates the status indicator based on the camera's is_active field.
@@ -232,6 +180,9 @@ class CameraFeedWidget(QFrame):
         self.last_update_time = current_time
 
         if not pixmap.isNull():
+            self.set_feed_active(True)
+            self.feed_timer.start()  # Reset the timeout timer
+            self.current_pixmap = pixmap
             if self.feed_label.pixmap() is None or self.feed_label.pixmap().size() != pixmap.size():
                 scaled_pixmap = pixmap.scaled(
                     self.feed_label.width(),
@@ -242,7 +193,13 @@ class CameraFeedWidget(QFrame):
                 self.feed_label.setPixmap(scaled_pixmap)
             else:
                 self.feed_label.setPixmap(pixmap)
-    
+
+    def handle_feed_timeout(self):
+        """
+        Called when no frame has been received for FEED_TIMEOUT_MS.
+        """
+        self.set_feed_active(False)
+
     def resizeEvent(self, event):
         """Redimensionner l'image quand le widget change de taille"""
         super().resizeEvent(event)
@@ -382,6 +339,18 @@ class ExpandedCameraWidget(QWidget):
         if hasattr(self, 'feed_container') and self.pixmap and not self.pixmap.isNull():
             self.update_feed(self.pixmap)
 
+def camera_to_dict(camera):
+    """Convert a Camera ORM object to a plain dict for UI use."""
+    return {
+        "id": camera.id,
+        "name": camera.name,
+        "location": camera.location,
+        "is_active": camera.is_active,
+        "image_path": getattr(camera, "rtsp_url", ""),
+        "ip_address": getattr(camera, "ip_address", None),
+        "port": getattr(camera, "port", None),
+    }
+
 class LiveFeedScreen(QWidget):
     frame_updated = pyqtSignal(int, QPixmap)  # camera_id, frame
     feed_stopped = pyqtSignal(int)            # camera_id
@@ -391,16 +360,114 @@ class LiveFeedScreen(QWidget):
         self.user_data = user_data
         self.db_session = get_session()  # Initialize database session
         self.camera_service = CameraService(self.db_session)  # CameraService instance
-        self.cameras = self.camera_service.get_all_cameras()
+        self.cameras = [camera_to_dict(cam) for cam in self.camera_service.get_all_cameras()]
         self.filtered_cameras = self.cameras  # Ajouté: liste filtrée
         self.camera_widgets = {}
         self.expanded_camera_widget = None
+        self.ros_node = ros_node
+        self.detected_cameras = set()  # Track detected camera device paths
+        self.ros_camera_sub = None
+        self.topic_to_camera_id = {}  # Map ROS topic to camera.id
         
         self.init_ui()
 
         self.ros_bridge = ROSImageBridge(ros_node)
+        # --- Subscribe to all /yolo/*/image_raw topics dynamically ---
         self.ros_bridge.image_received.connect(self.update_cam_a_feed, Qt.QueuedConnection)
+        if ros_node:
+            self.ros_bridge.subscribe_to_yolo_topics(self.handle_new_yolo_topic)
+
+        # Subscribe to /camera/list for auto-detection
+        if ros_node:
+            self.ros_camera_sub = ros_node.create_subscription(
+                ROSString, '/camera/list', self.handle_camera_list, 10
+            )
     
+    def handle_camera_list(self, msg):
+        """
+        Callback for /camera/list topic. Shows popup for new cameras.
+        """
+        try:
+            data = json.loads(msg.data)
+            devices = data.get('cameras', [])
+            new_devices = []
+            for dev in devices:
+                # Check if device is already in DB (by ip_address)
+                already_in_db = any(
+                    (cam.get("ip_address") or "").strip() == dev.strip()
+                    for cam in self.cameras
+                )
+                if not already_in_db and dev not in self.detected_cameras:
+                    new_devices.append(dev)
+            if not new_devices:
+                return
+            for dev in new_devices:
+                self.detected_cameras.add(dev)
+                self.show_camera_approval_dialog(dev)
+        except Exception as e:
+            logger.error(f"Error handling camera list: {e}")
+
+    def show_camera_approval_dialog(self, device_path):
+        """
+        Show a popup to approve a newly detected camera.
+        """
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("New Camera Detected")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(f"Detected camera device: <b>{device_path}</b>"))
+        layout.addWidget(QLabel("Approve and add this camera to the system?"))
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        layout.addWidget(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        if dialog.exec_() == QDialog.Accepted:
+            # Add camera to DB
+            try:
+                cam_name = f"AutoCam {device_path.split('/')[-1]}"
+                new_cam = self.camera_service.add_camera({
+                    "name": cam_name,
+                    "ip_address": device_path,
+                    "port": None,
+                    "location": "Auto-detected",
+                    "rtsp_url": "",  # Could be filled if needed
+                    "is_active": True
+                })
+                cam_dict = camera_to_dict(new_cam)
+                self.cameras.append(cam_dict)
+                self.filtered_cameras = self.cameras
+                self.load_cameras()
+                # Map topic to camera id for feed routing
+                topic = f"/camera/{device_path.split('/')[-1]}/image_raw"
+                self.topic_to_camera_id[topic] = cam_dict["id"]
+                logger.info(f"Camera {cam_name} added and mapped to topic {topic}")
+            except Exception as e:
+                logger.error(f"Failed to add auto camera: {e}")
+
+    def handle_new_yolo_topic(self, topic):
+        """
+        Called when a new /yolo/<videoX>/image_raw topic is detected.
+        Map it to the correct camera_id.
+        """
+        try:
+            video_name = topic.split('/')[2].lower()  # e.g. video13
+            found = False
+            for cam in self.cameras:
+                # Compare video_name with ip_address (e.g. /dev/video13)
+                ip_addr = (cam.get("ip_address") or "").lower()
+                cam_name = (cam.get("name") or "").lower()
+                # Accept match if video_name in ip_address or in cam_name (ignore spaces)
+                if video_name in ip_addr.replace("/dev/", "") or video_name in cam_name.replace(" ", ""):
+                    self.topic_to_camera_id[topic] = cam["id"]
+                    logger.info(f"Mapped YOLO topic {topic} to camera '{cam.get('name')}' (id={cam['id']})")
+                    found = True
+                    break
+            if not found:
+                logger.warning(f"No camera found for YOLO topic {topic} (video_name={video_name})")
+        except Exception as e:
+            logger.error(f"Error mapping yolo topic {topic}: {e}")
+
     def init_ui(self):
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -472,16 +539,6 @@ class LiveFeedScreen(QWidget):
             #expandButton:hover {
                 background-color: #1976D2;
             }
-            #addCameraButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-            }
-            #addCameraButton:hover {
-                background-color: #1976D2;
-            }
             #searchBox {
                 border: 1px solid #ddd;
                 border-radius: 4px;
@@ -511,17 +568,11 @@ class LiveFeedScreen(QWidget):
         for i, camera in enumerate(cameras):
             row = i // 2
             col = i % 2
-            camera_feed = CameraFeedWidget({
-                "id": camera.id,
-                "name": camera.name,
-                "location": camera.location,
-                "is_active": camera.is_active,
-                "image_path": camera.rtsp_url
-            })
+            camera_feed = CameraFeedWidget(camera)
             camera_feed.expand_clicked.connect(self.expand_camera)
             self.cameras_grid.addWidget(camera_feed, row, col)
 
-            self.camera_widgets[camera.id] = camera_feed
+            self.camera_widgets[camera["id"]] = camera_feed
 
     def filter_cameras(self, text):
         """
@@ -533,7 +584,7 @@ class LiveFeedScreen(QWidget):
         else:
             self.filtered_cameras = [
                 cam for cam in self.cameras
-                if text in (cam.name or '').lower() or text in (cam.location or '').lower()
+                if text in (cam.get("name") or '').lower() or text in (cam.get("location") or '').lower()
             ]
         self.load_cameras(self.filtered_cameras)
 
@@ -541,12 +592,7 @@ class LiveFeedScreen(QWidget):
         try:
             logger.info(f"Attempting to expand camera ID: {camera_id}")
             
-            camera_data = None
-            for camera in self.cameras:
-                if camera.id == camera_id:
-                    camera_data = camera
-                    break
-                    
+            camera_data = next((cam for cam in self.cameras if cam["id"] == camera_id), None)
             if not camera_data:
                 logger.warning(f"Camera with ID {camera_id} not found")
                 return
@@ -569,11 +615,11 @@ class LiveFeedScreen(QWidget):
                 self.expanded_camera_widget = None
                 
             self.expanded_camera_widget = ExpandedCameraWidget({
-                "id": camera_data.id,
-                "name": camera_data.name,
-                "location": camera_data.location,
-                "connected": camera_data.is_active,
-                "image_path": getattr(camera_data, 'rtsp_url', '')
+                "id": camera_data["id"],
+                "name": camera_data["name"],
+                "location": camera_data["location"],
+                "connected": camera_data.get("is_active", False),
+                "image_path": camera_data.get("image_path", "")
             }, pixmap)
             
             self.expanded_camera_widget.camera_id = camera_id
@@ -593,7 +639,7 @@ class LiveFeedScreen(QWidget):
                 self.ros_bridge.image_received.connect(self.update_expanded_cam_feed, Qt.QueuedConnection)
                 logger.info(f"Connected image_received signal to expanded view for camera {camera_id}")
 
-            logger.info(f"Camera {camera_data.name} expanded successfully")
+            logger.info(f"Camera {camera_data['name']} expanded successfully")
         except Exception as e:
             logger.error(f"Error expanding camera: {str(e)}")
             import traceback
@@ -666,21 +712,17 @@ class LiveFeedScreen(QWidget):
             logger.info(f"Setting active camera to ID: {camera_id}")
             self.active_camera_id = camera_id
             
-            camera_data = None
-            for camera in self.cameras:
-                if camera.id == camera_id:
-                    camera_data = camera
-                    break
-            
+            camera_data = next((cam for cam in self.cameras if cam["id"] == camera_id), None)
             if not camera_data:
                 logger.warning(f"Camera with ID {camera_id} not found")
                 return
             
-            logger.info(f"Found camera: {camera_data.name}")
+            logger.info(f"Found camera: {camera_data['name']}")
             
-            if not camera_data.is_active:
+            if not camera_data.get("is_active", False):
                 try:
                     self.camera_service.set_camera_active(camera_id, True)
+                    camera_data["is_active"] = True
                     logger.info(f"Activated camera {camera_id}")
                 except Exception as e:
                     logger.error(f"Failed to activate camera: {str(e)}")
@@ -740,20 +782,39 @@ class LiveFeedScreen(QWidget):
         except Exception as e:
             logger.error(f"Error loading camera feed: {str(e)}")
 
-    def update_cam_a_feed(self, cv_image):
+    def update_cam_a_feed(self, cv_image, topic=None):
+        """
+        Update the correct camera widget based on YOLO topic.
+        Also update the camera status in the database (is_active=True).
+        """
         try:
-            cam_a = next((camera for camera in self.cameras if camera.name == "Cam A"), None)
-            if not cam_a:
-                similar_cam = next((camera for camera in self.cameras 
-                                  if "cam" in camera.name.lower() and "a" in camera.name.lower()), None)
-                if similar_cam:
-                    cam_a = similar_cam
-                else:
-                    return
+            camera_id = None
+            if topic and topic in self.topic_to_camera_id:
+                camera_id = self.topic_to_camera_id[topic]
+            else:
+                cam_a = next((camera for camera in self.cameras if camera.get("name") == "Cam A"), None)
+                if not cam_a:
+                    similar_cam = next((camera for camera in self.cameras 
+                                      if "cam" in (camera.get("name") or '').lower() and "a" in (camera.get("name") or '').lower()), None)
+                    if similar_cam:
+                        cam_a = similar_cam
+                    else:
+                        return
+                camera_id = cam_a["id"]
 
-            camera_widget = self.camera_widgets.get(cam_a.id)
+            camera_widget = self.camera_widgets.get(camera_id)
             if not camera_widget:
                 return
+
+            # --- Mise à jour du statut dans la base de données ---
+            try:
+                self.camera_service.set_camera_active(camera_id, True)
+                # Mets aussi à jour l'objet local pour cohérence UI
+                for cam in self.cameras:
+                    if cam["id"] == camera_id:
+                        cam["is_active"] = True
+            except Exception as e:
+                logger.error(f"Failed to set camera active in DB: {e}")
 
             resized_image = cv2.resize(cv_image, (640, 360))
             height, width, channel = resized_image.shape
@@ -767,36 +828,23 @@ class LiveFeedScreen(QWidget):
             
             camera_widget.update_feed(pixmap)
             
-            self.frame_updated.emit(cam_a.id, pixmap)
+            self.frame_updated.emit(camera_id, pixmap)
         except Exception as e:
-            logger.error(f"Error updating feed for Camera A: {str(e)}")
+            logger.error(f"Error updating feed for camera: {str(e)}")
 
-    def show_add_camera_dialog(self):
-        dialog = AddCameraDialog(self)
-        result = dialog.exec_()
-
-        if result == QDialog.Accepted:
-            camera_data = dialog.get_camera_data()
-            if not camera_data["name"]:
-                QMessageBox.warning(self, "Validation Error", "Camera name is required")
-                return
-            if not camera_data["ip"]:
-                QMessageBox.warning(self, "Validation Error", "Camera IP/ID is required")
-                return
-
-            try:
-                self.camera_service.add_camera({
-                    "name": camera_data["name"],
-                    "ip_address": camera_data["ip"],
-                    "port": camera_data["port"],
-                    "location": camera_data["location"] or "Unknown Location",
-                    "rtsp_url": "",
-                    "is_active": camera_data["is_active"]
-                })
-                self.load_cameras()
-                QMessageBox.information(self, "Success", "Camera added successfully")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to add camera: {e}")
+    def feed_timeout_handler(self, camera_id):
+        """
+        Call this when a camera feed times out (no frame received).
+        Update the DB and local state to inactive, and emit feed_stopped.
+        """
+        try:
+            self.camera_service.set_camera_active(camera_id, False)
+            for cam in self.cameras:
+                if cam["id"] == camera_id:
+                    cam["is_active"] = False
+            self.feed_stopped.emit(camera_id)
+        except Exception as e:
+            logger.error(f"Error setting camera inactive on timeout: {str(e)}")
 
     def closeEvent(self, event):
         self.db_session.close()
