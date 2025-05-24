@@ -190,15 +190,21 @@ class AlertService:
 
             session = get_session()
             try:
-                camera = session.query(Camera).filter(Camera.is_active == True).first()
-                if not camera:
-                    logger.error("No active camera found!")
-                    return False
-                
-                camera_id = camera.id
-                
                 for detection in alert_data['detections']:
                     try:
+                        # --- Mapping dynamique caméra ---
+                        source_topic = detection.get('source_topic', '')
+                        video_name = None
+                        camera = None
+                        if source_topic.startswith('/camera/') and source_topic.endswith('/image_raw'):
+                            video_name = source_topic.split('/')[2]  # e.g. video13
+                            # Cherche caméra par ip_address (/dev/video13) ou nom (AutoCam video13)
+                            camera = session.query(Camera).filter(
+                                (Camera.ip_address.ilike(f"%{video_name}")) | 
+                                (Camera.name.ilike(f"%{video_name}%"))
+                            ).first()
+                        camera_id = camera.id if camera else None
+
                         class_mapping = {
                             "swimmer": AlertType.UNAUTHORIZED_SWIMMER.value,
                             "swimmer with life jacket": AlertType.SAFETY_COMPLIANT_SWIMMER.value,
@@ -219,7 +225,7 @@ class AlertService:
                         )
                         
                         session.add(alert)
-                        logger.info(f"Added an alert: {detection['class']}")
+                        logger.info(f"Added an alert: {detection['class']} (camera_id={camera_id})")
                     except Exception as e:
                         logger.error(f"Error while adding a detection: {e}")
                 
