@@ -49,7 +49,14 @@ class AlertDetailsDialog(QDialog):
         content_layout.addRow("Type:", QLabel(self.alert.type.value if hasattr(self.alert.type, "value") else str(self.alert.type)))
         content_layout.addRow("Date:", QLabel(self.alert.timestamp.strftime("%d/%m/%Y") if hasattr(self.alert, "timestamp") else "N/A"))
         content_layout.addRow("Time:", QLabel(self.alert.timestamp.strftime("%H:%M:%S") if hasattr(self.alert, "timestamp") else "N/A"))
-        location = self.alert.camera.location if hasattr(self.alert, "camera") and self.alert.camera else "Unknown"
+        location = "Unknown"
+        try:
+            if hasattr(self.alert, "camera") and self.alert.camera:
+                loc = getattr(self.alert.camera, "location", None)
+                if loc:
+                    location = loc
+        except Exception:
+            location = "Unknown"
         content_layout.addRow("Location:", QLabel(location))
         status = "Acknowledged" if getattr(self.alert, "is_acknowledged", False) else "Pending"
         content_layout.addRow("Status:", QLabel(status))
