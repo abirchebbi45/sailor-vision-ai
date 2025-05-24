@@ -20,7 +20,12 @@ class EnhancedCameraWidget(QFrame):
 
     def __init__(self, camera):
         super().__init__()
-        self.camera = camera
+        # Store only primitive fields, not the ORM object
+        self.camera_id = camera.id
+        self.name = getattr(camera, "name", "Unknown")
+        self.location = getattr(camera, "location", "Unknown Location")
+        self.is_active = getattr(camera, "is_active", False)
+        self.placeholder_image = getattr(camera, "placeholder_image", None)
         self.has_live_feed = False
         self.click_enabled = True  # Flag to prevent multiple clicks
         self.init_ui()
@@ -50,8 +55,8 @@ class EnhancedCameraWidget(QFrame):
         self.feed_label.setStyleSheet("color: white; background-color: #313131;")
         
         # Set placeholder image or text
-        if hasattr(self.camera, 'placeholder_image') and self.camera.placeholder_image:
-            pixmap = QPixmap(self.camera.placeholder_image)
+        if self.placeholder_image:
+            pixmap = QPixmap(self.placeholder_image)
             self.feed_label.setPixmap(pixmap.scaled(
                 240, 100,  # Adjusted to match the smaller widget size
                 Qt.KeepAspectRatio,
@@ -63,49 +68,44 @@ class EnhancedCameraWidget(QFrame):
         feed_layout.addWidget(self.feed_label)
         layout.addWidget(feed_container)
         
+        # --- Fix: Add a large stretch to push info text to the bottom ---
+        layout.addStretch(1)
+        layout.addSpacing(4)  # Small gap between black screen and text
+
         # Camera info panel
         info_container = QWidget()
         info_container.setObjectName("cameraInfo")
         info_layout = QVBoxLayout(info_container)
-        info_layout.setContentsMargins(5, 4, 5, 4)  # Reduced left and right padding
-        info_layout.setSpacing(2)
-        
-        # Location/name - bold and larger
-        location_label = QLabel(self.camera.location or "Unknown Location")
-        location_label.setObjectName("cameraLocation")
-        location_font = location_label.font()
-        location_font.setBold(True)
-        location_font.setPointSize(8)  # Reduced font size
-        location_label.setFont(location_font)
-        info_layout.addWidget(location_label)
-        
-        # Camera details
-        details_label = QLabel(f"Camera {self.camera.name} {self.camera.location}")
-        details_font = details_label.font()
-        details_font.setPointSize(7)  # Reduced font size
-        details_label.setFont(details_font)
-        info_layout.addWidget(details_label)
-        
-        # Status with colored indicator
+        info_layout.setContentsMargins(5, 4, 5, 4)
+        info_layout.setSpacing(1)
+
+        # Camera name and location on the same line, separated by a dot
+        name = self.name or "Unknown"
+        location = self.location or "Unknown Location"
+        name_location_label = QLabel(f"{name} · {location}")
+        name_location_label.setObjectName("cameraNameLocationLabel")
+        name_font = name_location_label.font()
+        name_font.setBold(True)
+        name_font.setPointSize(10)
+        name_location_label.setFont(name_font)
+        info_layout.addWidget(name_location_label)
+
+        # Status with colored indicator (unchanged)
         status_container = QWidget()
         status_layout = QHBoxLayout(status_container)
         status_layout.setContentsMargins(0, 0, 0, 0)
         status_layout.setSpacing(5)
-        
         status_indicator = QLabel()
-        status_indicator.setFixedSize(5, 5)  # Reduced size for the status indicator
-        if self.camera.is_active:
+        status_indicator.setFixedSize(5, 5)
+        if self.is_active:
             status_indicator.setStyleSheet("background-color: #4CAF50; border-radius: 2.5px;")
         else:
             status_indicator.setStyleSheet("background-color: #F44336; border-radius: 2.5px;")
-        
-        status_text = QLabel(f"Status: {'Active' if self.camera.is_active else 'Inactive'}")
-        status_text.setStyleSheet("color: #757575; font-size: 9px;")  # Reduced font size
-        
+        status_text = QLabel(f"Status: {'Active' if self.is_active else 'Inactive'}")
+        status_text.setStyleSheet("color: #757575; font-size: 9px;")
         status_layout.addWidget(status_indicator)
         status_layout.addWidget(status_text)
         status_layout.addStretch()
-        
         info_layout.addWidget(status_container)
         layout.addWidget(info_container)
 
@@ -118,6 +118,11 @@ class EnhancedCameraWidget(QFrame):
             QFrame#cameraWidget:hover {
                 border: 1px solid #2196F3;
                 background-color: #e3f2fd;
+            }
+            QLabel#cameraNameLocationLabel {
+                font-weight: bold;
+                font-size: 10px;
+                color: #333;
             }
         """)
 
@@ -136,8 +141,8 @@ class EnhancedCameraWidget(QFrame):
     def reset_to_default(self):
         """Reset to default placeholder when feed stops"""
         self.has_live_feed = False
-        if hasattr(self.camera, 'placeholder_image') and self.camera.placeholder_image:
-            pixmap = QPixmap(self.camera.placeholder_image)
+        if self.placeholder_image:
+            pixmap = QPixmap(self.placeholder_image)
             self.feed_label.setPixmap(pixmap.scaled(
                 240, 100,
                 Qt.KeepAspectRatio,
@@ -150,9 +155,9 @@ class EnhancedCameraWidget(QFrame):
     def mousePressEvent(self, event):
         """Emit the clicked signal with the camera ID when the widget is clicked."""
         if event.button() == Qt.LeftButton and self.click_enabled:
-            logger.info(f"Camera widget clicked: {self.camera.id}")
+            logger.info(f"Camera widget clicked: {self.camera_id}")
             self.click_enabled = False  # Disable clicking temporarily
-            self.clicked.emit(self.camera.id)
+            self.clicked.emit(self.camera_id)
             
             # Re-enable clicking after a short delay
             QTimer.singleShot(500, self.enable_click)
@@ -270,15 +275,26 @@ class DashboardAlertItem(QFrame):
         message = self.alert.message
         if "\n" in message:
             message = message.split('\n')[0]  # first line only
-        brief = QLabel(f"{message} • {self.alert.camera.location if self.alert.camera else 'Unknown'}")
+        # Robust location extraction
+        location = "Unknown"
+        if self.alert.camera and getattr(self.alert.camera, "location", None):
+            loc = getattr(self.alert.camera, "location", None)
+            if loc:
+                location = loc
+        else:
+            logger.debug(f"Alert {self.alert.id} has no camera location, displaying 'Unknown'")
+        brief = QLabel(f"{message} • {location}")
         brief.setObjectName("alertDescription")
         info.addWidget(brief)
         
         # 3) Relative timestamp
-        current_time = QDateTime.currentDateTime()
-        alert_time = QDateTime.fromString(self.alert.timestamp.strftime("%Y-%m-%d %H:%M:%S"), "yyyy-MM-dd HH:mm:ss")
-        minutes_ago = (current_time.toSecsSinceEpoch() - alert_time.toSecsSinceEpoch()) // 60
-        time_text = f"{minutes_ago} mins ago" if minutes_ago > 0 else "Just now"
+        try:
+            current_time = QDateTime.currentDateTime()
+            alert_time = QDateTime.fromString(self.alert.timestamp.strftime("%Y-%m-%d %H:%M:%S"), "yyyy-MM-dd HH:mm:ss")
+            minutes_ago = (current_time.toSecsSinceEpoch() - alert_time.toSecsSinceEpoch()) // 60
+            time_text = f"{minutes_ago} mins ago" if minutes_ago > 0 else "Just now"
+        except Exception:
+            time_text = "Recent"
         time = QLabel(time_text)
         time.setObjectName("alertTimestamp")
         info.addWidget(time)
@@ -326,7 +342,7 @@ class DashboardScreen(QWidget):
     navigate_to_alerts = pyqtSignal()
     alerts_acknowledged = pyqtSignal()  # New signal for alert acknowledgment
     navigate_to_live_feed = pyqtSignal(int)  # Signal to navigate to the live feed screen
-    
+
     def __init__(self, user_data=None):
         super().__init__()
         self.user_data = user_data
@@ -362,13 +378,13 @@ class DashboardScreen(QWidget):
         self.dashboard_layout.setContentsMargins(10, 10, 10, 10)  # Initial margins
         self.dashboard_layout.setSpacing(10)
         
-        # Active Cameras Section
+        # Connected Cameras Section (was Active Cameras)
         self.cameras_section = SectionFrame()
         self.cameras_layout = QVBoxLayout(self.cameras_section)
-        self.cameras_layout.setContentsMargins(15, 15, 15, 15)  # Match margins with the title
+        self.cameras_layout.setContentsMargins(15, 15, 15, 15)
         self.cameras_layout.setSpacing(10)
         
-        cameras_title = QLabel("Active Cameras")
+        cameras_title = QLabel("Connected Cameras")  # <-- Titre changé
         cameras_title.setObjectName("SectionTitle")
         title_font = cameras_title.font()
         title_font.setBold(True)
@@ -393,7 +409,6 @@ class DashboardScreen(QWidget):
         self.more_cameras_label.setStyleSheet("color: #757575; font-style: italic; margin-top: 5px;")
         self.more_cameras_label.setVisible(False)  # Initially hidden
         self.cameras_layout.addWidget(self.more_cameras_label)
-        
         self.dashboard_layout.addWidget(self.cameras_section)
         
         # Security Alerts Section
@@ -417,7 +432,6 @@ class DashboardScreen(QWidget):
         view_all_alerts.setCursor(Qt.PointingHandCursor)
         view_all_alerts.clicked.connect(self.view_all_alerts)
         alerts_header_layout.addWidget(view_all_alerts, alignment=Qt.AlignRight)
-        
         alerts_layout.addLayout(alerts_header_layout)
         
         # Alerts container with increased height
@@ -434,7 +448,6 @@ class DashboardScreen(QWidget):
         self.alerts_container_layout.setContentsMargins(0, 0, 0, 0)
         self.alerts_container_layout.setSpacing(8)  # Slightly reduced spacing between alerts
         self.alerts_container_layout.setAlignment(Qt.AlignTop)
-        
         self.alerts_container.setWidget(alerts_container_widget)
         alerts_layout.addWidget(self.alerts_container)
         
@@ -450,9 +463,7 @@ class DashboardScreen(QWidget):
         self.acknowledge_all_btn.setCursor(Qt.PointingHandCursor)
         self.acknowledge_all_btn.clicked.connect(self.acknowledge_all_alerts)
         ack_button_layout.addWidget(self.acknowledge_all_btn)
-        
         alerts_layout.addWidget(ack_button_container)
-        
         self.dashboard_layout.addWidget(alerts_section)
         
         # System Status Section
@@ -505,7 +516,7 @@ class DashboardScreen(QWidget):
         # Set the scroll area widget
         self.scroll_area.setWidget(self.dashboard_widget)
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)  # Removed outer margins
+        self.main_layout.setContentsMargins(0, 0, 0, 0)  # Removed outer margins                
         self.main_layout.addWidget(self.scroll_area)
 
         # Connect camera widget clicks to navigation
@@ -542,52 +553,49 @@ class DashboardScreen(QWidget):
         self.check_system_status()
     
     def load_cameras(self):
-        """Load and display active camera widgets."""
+        """Load and display all cameras from the database (always fresh from DB)."""
         self.clear_layout(self.camera_flow_layout)
         self.camera_widgets = {}
-        cameras = self.camera_service.get_active_cameras()
+        # Always reload from DB to get the latest status
+        cameras = self.camera_service.get_all_cameras()
         if not hasattr(self, 'max_cameras'):
             self.max_cameras = 3
         cameras_to_show = min(len(cameras), self.max_cameras)
         remaining_cameras = len(cameras) - cameras_to_show
         for i in range(cameras_to_show):
             camera = cameras[i]
+            # Pass the ORM object, but EnhancedCameraWidget only stores primitives
             camera_widget = EnhancedCameraWidget(camera)
-            camera_widget.clicked.connect(self.navigate_to_live_feed)  # Connect click signal
+            camera_widget.clicked.connect(self.navigate_to_live_feed)
             self.camera_widgets[camera.id] = camera_widget
             if camera.id in self.camera_frames:
                 camera_widget.update_frame(self.camera_frames[camera.id])
             self.camera_flow_layout.addWidget(camera_widget)
         self.camera_flow_layout.addStretch(1)
         if remaining_cameras > 0:
-            self.more_cameras_label.setText(f"{remaining_cameras} other active {'camera' if remaining_cameras == 1 else 'cameras'}")
+            self.more_cameras_label.setText(f"{remaining_cameras} other connected {'camera' if remaining_cameras == 1 else 'cameras'}")
             self.more_cameras_label.setVisible(True)
         else:
             self.more_cameras_label.setVisible(False)
-    
+
     def update_camera_feed(self, camera_id, pixmap):
-        """Update a specific camera feed with new frame"""
+        """Update a specific camera feed with new frame and set status active in DB."""
         logger.info(f"Updating feed for camera ID: {camera_id}")
-        
-        # Store the latest frame
         self.camera_frames[camera_id] = pixmap
-        
-        # Update the camera widget if it's visible
-        if camera_id in self.camera_widgets:
-            logger.info(f"Camera {camera_id} found in widgets, updating display")
-            self.camera_widgets[camera_id].update_frame(pixmap)
-        else:
-            logger.warning(f"Camera {camera_id} not found in widgets")
-    
+        # Set camera as active in DB
+        self.camera_service.set_camera_active(camera_id, True)
+        # Reload cameras from DB to ensure status is up-to-date everywhere
+        self.load_cameras()
+
     def camera_feed_stopped(self, camera_id):
-        """Handle when a camera feed stops"""
+        """Handle when a camera feed stops and set status inactive in DB."""
         logger.info(f"Feed stopped for camera ID: {camera_id}")
-        
         if camera_id in self.camera_frames:
             del self.camera_frames[camera_id]
-        
-        if camera_id in self.camera_widgets:
-            self.camera_widgets[camera_id].reset_to_default()
+        # Set camera as inactive in DB
+        self.camera_service.set_camera_active(camera_id, False)
+        # Reload cameras from DB to ensure status is up-to-date everywhere
+        self.load_cameras()
     
     def view_all_alerts(self):
         """Navigate to the alerts screen if there are active alerts, otherwise show a dialog"""
