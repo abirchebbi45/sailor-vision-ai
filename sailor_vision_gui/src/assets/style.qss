@@ -103,6 +103,7 @@ QWidget#central_widget {
     padding: 4px 10px;   /* Adjusted padding for smaller height */
     height: 20px; 
     border: none;
+    font-size: 10px;
 }
 #actionButton:hover {
     background-color: #1976D2; /* Darker shade for hover effect */
@@ -111,7 +112,7 @@ QWidget#central_widget {
 /* Dashboard Widgets */
 QWidget#dashboardWidget {
     background-color: #f5f5f5;
-    padding: 20px;
+    padding: 10px; /* Reduced padding to minimize spacing */
 }
 
 #SectionTitle {
@@ -119,15 +120,32 @@ QWidget#dashboardWidget {
     font-weight: bold;
     color: #333333;
     padding-bottom: 5px;
+    background-color : transparent;
+}
+
+
+
+#emptyStateMessage QLabel {
+    background-color : transparent;
 }
 
 #sectionFrame {
     background-color: rgba(240, 240, 245, 0.7);
     border-radius: 8px;
     border: 1px solid rgba(220, 220, 225, 0.9);
+    padding: 5px; /* Added padding to control internal spacing */
+    margin: 0px; /* Removed any external margins */
 }
 
 /* Camera widget styles */
+
+#cameraWidget {
+    background-color: white;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    margin: 5px; /* Explicitly set margin to control spacing between widgets */
+    padding: 5px; /* Added padding for internal spacing */
+}
 
 #cameraFeed {
     background-color: #313131;
@@ -143,6 +161,16 @@ QWidget#dashboardWidget {
 /* Alert card styles */
 QWidget#AlertsContainer {
     margin-bottom: 15px;
+    background-color: transparent; 
+}
+
+/* Dashboard alert items - specific for dashboard */
+#dashboardAlertItem {
+  background-color: white;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  margin-bottom: 6px;
+  
 }
 
 
@@ -242,7 +270,7 @@ QWidget {
     background-color: #1E88E5;
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: 10px;
     padding: 8px 12px;
     min-width: 80px;
 }
@@ -282,8 +310,9 @@ QWidget {
     color: white;
     border: none;
     border-radius: 4px;
-    padding: 8px 12px;
+    padding: 4px 10px;
     min-width: 80px;
+    font-size: 10px;
 }
 
 #dangerButton:hover {
@@ -337,6 +366,8 @@ QWidget {
     background-color: white;
     border-radius: 6px;
     border: 1px solid #e0e0e0;
+    margin: 5px; /* Explicitly set margin to control spacing between widgets */
+    padding: 5px; /* Added padding for internal spacing */
 }
 
 #cameraTitle, #cameraLabel {
@@ -350,44 +381,48 @@ QWidget {
     font-weight: bold;
     color: #333333;
     font-size: 13px;
+    background-color = transparent;
 }
 
 #alertDescription {
     color: #555555;
-    font-size: 12px;
+    font-size: 10px;
+    background-color = transparent;
 }
 
 #alertTime {
     color: #757575;
     font-size: 12px;
+    background-color = transparent;
 }
 
-#alertItem {
-  background-color: rgba(240,240,245,0.7);
-  border: 1px solid rgba(220,220,225,0.9);
-  border-radius: 8px;
-}
-#alertType {
-  font-size: 13px;
-  color: #333;
-}
-#alertDescription {
-  font-size: 11px;
-  color: #555;
-}
+
 #alertTimestamp {
   font-size: 10px;
   color: #777;
+  background-color = transparent;
 }
 #acknowledgeButton {
-  background-color: #2196F3;
-    border: 1px solid #1E88E5;
+    background-color: #2196F3;
+    color: white;
     border-radius: 4px;
-    padding: 8px 12px;
-    min-width: 90px;
+    padding: 6px 15px;
+    border: none;
+    font-size: 9px;
 }
+
 #acknowledgeButton:hover {
-  background-color: #1976D2;
+    background-color: #1976D2;
+    color: white;
+}
+
+#moreAlertsLabel {
+    color: #757575; 
+    font-style: italic; 
+    padding: 5px;
+    font-size: 11px;
+    margin-top: 3px;
+    margin-bottom: 3px;
 }
 
 
@@ -435,8 +470,13 @@ QWidget {
     border: 1px solid #e0e0e0; /* Remplacement de box-shadow */
 }
 
+/* Set the QLabel elements (text and logo) inside the login container to have a transparent background */
+#loginContainer QLabel {
+    background-color: transparent;
+}
+
 #loginTitle {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: bold;
     color: #1E88E5;
 }
@@ -449,15 +489,15 @@ QWidget {
 #loginInput {
     background-color: #f5f5f5;
     border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    padding: 12px;
+    border-radius: 10px;
+    padding: 10px;
     margin-bottom: 10px;
 }
 
 #forgotPassword {
     color: #1E88E5;
     font-size: 12px;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
 }
 
 /* Status indicator */
@@ -884,6 +924,7 @@ QWidget#NavButton[active="true"] {
     font-weight: bold;
     color: #333333;
     margin-bottom: 15px;
+    background-color : transparent;
 }
 
 QLabel[mandatory="true"]::after {
@@ -893,6 +934,12 @@ QLabel[mandatory="true"]::after {
 
 QRadioButton, QCheckBox {
     padding: 5px;
+    background-color: transparent;
+}
+QCheckBox::indicator {
+    width: 16px; /* Adjust the size of the checkbox */
+    height: 16px;
+    border-radius: 2px;
 }
 
 QProgressBar {
@@ -909,22 +956,25 @@ QProgressBar::chunk {
 
 /* Alerts */
 #alertItem {
-    background-color: white;
+    background-color: #ffffff;
     border-radius: 6px;
     border: 1px solid #e0e0e0;
     padding: 5px;
+    
 }
 
 
 .AlertInfo {
     color: #8d99ae;
     font-size: 12px;
+    background-color: transparent;
 }
 
 .AlertTime {
     color: #8d99ae;
     font-style: italic;
     font-size: 11px;
+    background-color: transparent;
 }
 
 .MotionAlert {
