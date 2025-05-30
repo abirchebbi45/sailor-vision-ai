@@ -31,13 +31,13 @@ class LoginScreen(QWidget):
         
         login_layout = QVBoxLayout(login_container)
         login_layout.setAlignment(Qt.AlignCenter)
-        login_layout.setSpacing(20)
+        login_layout.setSpacing(10)
         login_layout.setContentsMargins(30, 30, 30, 30)
         
         logo_label = QLabel()
         logo_label.setAlignment(Qt.AlignCenter)
-        logo_icon = QIcon("/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/Sailor vision logo.png")  # Chemin relatif
-        logo_pixmap = logo_icon.pixmap(QSize(120, 120))
+        logo_icon = QIcon("/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/SailorVision_logo.png")  # Chemin relatif
+        logo_pixmap = logo_icon.pixmap(QSize(700, 700)) # Ajuster la taille du logo
         logo_label.setPixmap(logo_pixmap)
         login_layout.addWidget(logo_label)
         
@@ -51,7 +51,7 @@ class LoginScreen(QWidget):
         subtitle_label.setAlignment(Qt.AlignCenter)
         login_layout.addWidget(subtitle_label)
         
-        login_layout.addSpacing(20)
+        login_layout.addSpacing(5)
         
         self.email_input = QLineEdit()
         self.email_input.setPlaceholderText("Your email address")
