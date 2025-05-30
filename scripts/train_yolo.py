@@ -9,6 +9,7 @@ def train_yolo():
 
     # Charger la configuration
     config_path = os.path.join(project_root, "config.yaml")
+    print(f"The config_path : {config_path}")
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
 
@@ -34,26 +35,33 @@ def train_yolo():
     log_event("Début de l'entraînement YOLO...")
 
     # Boucle d'entraînement pour gérer la sauvegarde et le logging
-    for epoch in range(1, total_epochs + 1):
-        results = model.train(
-            data=config_path,  # Utiliser le fichier config.yaml comme config YOLO
-            epochs=1,  # Entraîner une epoch à la fois pour capturer les logs
+    data_path = os.path.join(project_root, "data.yaml")
+    print("total epochs : ",total_epochs)
+    #for epoch in range(1, total_epochs + 1):
+    results = model.train(
+            data=data_path,  # Utiliser le fichier config.yaml comme config YOLO
+            epochs=total_epochs,  # Entraîner une epoch à la fois pour capturer les logs
             batch=batch_size,
             imgsz=img_size,
             project=output_dir,
             name="train_yolo",
             exist_ok=True
         )
-        # Error probably here
+    # Displaying results
+    print(dir(results))
         
-        # Sauvegarde des logs après chaque epoch
-        best_metric = results.results[0].metrics.top1 if hasattr(results.results[0].metrics, 'top1') else "N/A"
-        log_event(f"Epoch {epoch}/{total_epochs} terminée. Meilleure précision : {best_metric}")
+    # Get the correct metric from results
+    if hasattr(results, 'metrics'):
+        best_metric = results.metrics.mAP50 if hasattr(results.metrics, 'mAP50') else "N/A"
+    else:
+        best_metric = "N/A"
+
+    #log_event(f"Epoch {epoch}/{total_epochs} terminée. Meilleure précision : {best_metric}")
 
         # Sauvegarde du modèle tous les 5 epochs
-        if epoch % 5 == 0:
-            model_save_path = os.path.join(model_checkpoint_dir, f"yolo_epoch_{epoch}.pt")
-            model.save(model_save_path)
-            log_event(f"Modèle sauvegardé après {epoch} epochs : {model_save_path}")
+    #    if epoch % 5 == 0:
+    model_save_path = os.path.join(model_checkpoint_dir, f"yolo_1.pt")
+    model.save(model_save_path)
+    #        log_event(f"Modèle sauvegardé après {epoch} epochs : {model_save_path}")
 
     log_event(f"Entraînement YOLO terminé. Modèles sauvegardés dans {model_checkpoint_dir}")

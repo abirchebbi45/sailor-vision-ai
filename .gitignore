@@ -1,7 +1,6 @@
 data/images/
 data/labels/
 data/test/
-outputs/
 models/
 __pycache__/
 *.log
