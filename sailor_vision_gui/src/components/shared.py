@@ -193,14 +193,14 @@ class Sidebar(QWidget):
         # Logo container with proper padding
         logo_container = QWidget()
         logo_container.setObjectName("logoContainer")
-        logo_container.setFixedHeight(60)  # Reduced height
+        logo_container.setFixedHeight(80)  # Reduced height
         logo_layout = QHBoxLayout(logo_container)
         logo_layout.setContentsMargins(15, 5, 15, 5)  # Added horizontal padding
         
         logo_label = QLabel()
         logo_label.setFixedSize(140, 50)
         logo_label.setScaledContents(True)
-        logo_icon = QIcon("/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/Sailor vision logo.png")
+        logo_icon = QIcon("/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/src/assets/SailorVision_logo.png")
         logo_pixmap = logo_icon.pixmap(QSize(140, 50))
         logo_label.setPixmap(logo_pixmap)
         logo_layout.addWidget(logo_label, 0, Qt.AlignCenter)
