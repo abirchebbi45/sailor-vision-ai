@@ -656,21 +656,28 @@ class DashboardScreen(QWidget):
             session = get_session()
             alerts = session.query(Alert).filter(Alert.is_acknowledged == False).order_by(Alert.timestamp.desc()).limit(5).all()
             total_unack_alerts = session.query(Alert).filter_by(is_acknowledged=False).count()
+            
+            # Ensure the acknowledge button reflects the correct state
             if total_unack_alerts > 0:
                 self.acknowledge_all_btn.setText(f"Acknowledge All Alerts ({total_unack_alerts})")
                 self.acknowledge_all_btn.setEnabled(True)
+                
+                # Populate the alerts container
                 for alert in alerts:
                     alert_widget = DashboardAlertItem(alert)
                     alert_widget.acknowledge_clicked.connect(self.acknowledge_alert)
                     self.alerts_container_layout.addWidget(alert_widget)
+                
+                # Show additional alerts label if there are more than 5
                 if total_unack_alerts > 5:
                     more_alerts_label = QLabel(f"+ {total_unack_alerts - 5} more pending alerts")
                     more_alerts_label.setObjectName("moreAlertsLabel")
                     more_alerts_label.setAlignment(Qt.AlignCenter)
                     more_alerts_label.setStyleSheet("color: #757575; font-style: italic; padding: 5px;")
                     self.alerts_container_layout.addWidget(more_alerts_label)
-                self.alerts_container.setFixedHeight(280)
+                self.alerts_container.setFixedHeight(280)  # Ensure proper height
             else:
+                # Show a message if no alerts are available
                 no_alerts = QLabel("No active alerts")
                 no_alerts.setObjectName("emptyStateMessage")
                 no_alerts.setAlignment(Qt.AlignCenter)
@@ -678,6 +685,7 @@ class DashboardScreen(QWidget):
                 self.alerts_container.setFixedHeight(30)
                 self.acknowledge_all_btn.setEnabled(False)
                 self.acknowledge_all_btn.setText("No Pending Alerts")
+            
             self.alerts_container_layout.addStretch()
         except Exception as e:
             logger.error(f"Error loading alerts: {str(e)}")
