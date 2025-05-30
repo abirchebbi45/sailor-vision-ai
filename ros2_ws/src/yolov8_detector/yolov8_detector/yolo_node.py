@@ -8,6 +8,10 @@ from ultralytics import YOLO
 import cv2
 import json
 
+# This node subscribes to camera image streams, processes them with YOLOv8,
+# and publishes annotated images and detection alerts.
+# It dynamically manages subscriptions to camera topics based on the available streams.
+# It publishes detection results on a dedicated topic and sends alerts for detected objects.
 class YoloNode(Node):
     def __init__(self):
         super().__init__('yolo_node')
