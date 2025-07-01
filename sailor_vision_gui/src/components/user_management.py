@@ -12,10 +12,11 @@ from src.components.shared import HeaderWidget, UserCard
 from models import User, UserRole
 
 class UserDialog(QDialog):
-    def __init__(self, user=None, parent=None):
+    def __init__(self, user=None, db_session=None, parent=None):
         super().__init__(parent)
         self.user = user
-        self.user_service = UserService()
+        self.db_session = db_session
+        self.user_service = UserService(db_session)
         
         # Set window properties
         self.setWindowTitle("Add User" if not user else "Edit User")
@@ -242,10 +243,11 @@ class UserDialog(QDialog):
         return True
 
 class UserManagementScreen(QWidget):
-    def __init__(self, user_data=None):
+    def __init__(self, user_data=None, db_session=None):
         super().__init__()
         self.user_data = user_data
-        self.user_service = UserService()
+        self.db_session = db_session
+        self.user_service = UserService(db_session)
         
         self.init_ui()
         
