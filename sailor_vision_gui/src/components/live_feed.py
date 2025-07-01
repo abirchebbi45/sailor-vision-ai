@@ -355,7 +355,7 @@ class LiveFeedScreen(QWidget):
     frame_updated = pyqtSignal(int, QPixmap)  # camera_id, frame
     feed_stopped = pyqtSignal(int)            # camera_id
 
-    def __init__(self, user_data=None, ros_node=None):
+    def __init__(self, user_data=None, ros_node=None, ros_bridge=None):
         super().__init__()
         self.user_data = user_data
         self.db_session = get_session()  # Initialize database session
@@ -371,7 +371,9 @@ class LiveFeedScreen(QWidget):
         
         self.init_ui()
 
-        self.ros_bridge = ROSImageBridge(ros_node)
+        # Use provided ROSImageBridge or create a new one
+        self.ros_bridge = ros_bridge or ROSImageBridge(ros_node)
+        
         # --- Subscribe to all /yolo/*/image_raw topics dynamically ---
         self.ros_bridge.image_received.connect(self.update_cam_a_feed, Qt.QueuedConnection)
         if ros_node:
