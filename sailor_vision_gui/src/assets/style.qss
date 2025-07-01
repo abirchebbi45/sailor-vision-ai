@@ -936,11 +936,6 @@ QRadioButton, QCheckBox {
     padding: 5px;
     background-color: transparent;
 }
-QCheckBox::indicator {
-    width: 16px; /* Adjust the size of the checkbox */
-    height: 16px;
-    border-radius: 2px;
-}
 
 QProgressBar {
     border: none;
@@ -953,6 +948,7 @@ QProgressBar::chunk {
     background-color: #219ebc;
     border-radius: 3px;
 }
+
 
 /* Alerts */
 #alertItem {
