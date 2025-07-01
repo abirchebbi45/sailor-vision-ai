@@ -164,6 +164,13 @@ class MainWindow(QMainWindow):
         self.playback_screen = PlaybackScreen(user_data=user_data, ros_node=self.ros_node)
         self.settings_screen = SettingsScreen(user=user_data, db_session=db_session)
 
+        # Connect LiveFeedScreen camera signals to DashboardScreen
+        self.live_feed_screen.frame_updated.connect(self.dashboard_screen.update_camera_feed)
+        self.live_feed_screen.feed_stopped.connect(self.dashboard_screen.camera_feed_stopped)
+        
+        # Connect DashboardScreen signals to LiveFeedScreen navigation
+        self.dashboard_screen.navigate_to_live_feed.connect(self.handle_live_feed_navigation)
+
         # Add screens to the stacked widget
         self.stacked_widget.addWidget(self.dashboard_screen)
         self.stacked_widget.addWidget(self.live_feed_screen)
