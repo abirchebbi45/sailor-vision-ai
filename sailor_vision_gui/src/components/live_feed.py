@@ -830,6 +830,7 @@ class LiveFeedScreen(QWidget):
             
             camera_widget.update_feed(pixmap)
             
+            # Émettre le signal pour que le DashboardScreen puisse mettre à jour son aperçu de caméra
             self.frame_updated.emit(camera_id, pixmap)
         except Exception as e:
             logger.error(f"Error updating feed for camera: {str(e)}")
