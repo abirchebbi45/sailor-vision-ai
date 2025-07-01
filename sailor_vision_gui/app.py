@@ -18,12 +18,14 @@ from src.components.alerts import AlertsScreen
 from src.components.user_management import UserManagementScreen
 from src.components.playback import PlaybackScreen
 from src.components.shared import Sidebar, HeaderWidget
+from src.components.settings import SettingsScreen
 
 
-from database import init_db
+from database import init_db, get_session
 from models import User, Camera, Alert, Recording
 from config import load_config
 from shared.detection_recorder import DetectionRecorder
+from shared.ros_image_listener import ROSImageBridge
 
 # Configure logging
 logging.basicConfig(
@@ -47,8 +49,11 @@ class MainWindow(QMainWindow):
         # Initialize database
         init_db()
         
+        # Create one shared ROSImageBridge instance for both LiveFeed and DetectionRecorder
+        self.ros_bridge = ROSImageBridge(ros_node)
+        
         # Initialize the DetectionRecorder
-        self.detection_recorder = DetectionRecorder(self.ros_node)
+        self.detection_recorder = DetectionRecorder(self.ros_node, ros_bridge=self.ros_bridge)
         logger.info("Detection recorder initialized")
 
         # Main window configuration
@@ -139,7 +144,7 @@ class MainWindow(QMainWindow):
             lambda: self.switch_view("User Management",  self.user_management_screen)  
         )
         self.sidebar.settings_clicked.connect(
-            lambda: self.switch_view("Settings", None)  # To be implemented
+            lambda: self.switch_view("Settings", self.settings_screen)
         )
         self.sidebar.logout_clicked.connect(self.handle_logout)  # Connect logout signal
 
@@ -151,32 +156,21 @@ class MainWindow(QMainWindow):
 
     def initialize_screens(self, user_data):
         """Initialize different screens for the application"""
-        self.dashboard_screen  = DashboardScreen(user_data=user_data)
-        self.live_feed_screen  = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node)
-        self.alerts_screen     = AlertsScreen(user_data=user_data, ros_node=self.ros_node)
-        self.user_management_screen = UserManagementScreen(user_data=user_data)
-        self.playback_screen   = PlaybackScreen(user_data=user_data, ros_node=self.ros_node)
+        db_session = get_session()
+        self.dashboard_screen = DashboardScreen(user_data=user_data)
+        self.live_feed_screen = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node, ros_bridge=self.ros_bridge)
+        self.alerts_screen = AlertsScreen(user_data=user_data, ros_node=self.ros_node)
+        self.user_management_screen = UserManagementScreen(user_data=user_data, db_session=db_session)
+        self.playback_screen = PlaybackScreen(user_data=user_data, ros_node=self.ros_node)
+        self.settings_screen = SettingsScreen(user=user_data, db_session=db_session)
 
-        # Connect dashboard's navigation signal
-        self.dashboard_screen.navigate_to_alerts.connect(
-            lambda: self.switch_view("Alerts", self.alerts_screen)
-        )
-        
-        # Connect dashboard's navigation signal to live feed
-        self.dashboard_screen.navigate_to_live_feed.connect(self.handle_live_feed_navigation)
-        
-        # Connect signals for cross-screen alert acknowledgment updates
-        self.dashboard_screen.alerts_acknowledged.connect(self.alerts_screen.refresh_alerts)
-        
-        # Connect live feed signals to dashboard for camera feed synchronization
-        self.live_feed_screen.frame_updated.connect(self.dashboard_screen.update_camera_feed)
-        self.live_feed_screen.feed_stopped.connect(self.dashboard_screen.camera_feed_stopped)
-
+        # Add screens to the stacked widget
         self.stacked_widget.addWidget(self.dashboard_screen)
         self.stacked_widget.addWidget(self.live_feed_screen)
         self.stacked_widget.addWidget(self.alerts_screen)
         self.stacked_widget.addWidget(self.user_management_screen)
-        self.stacked_widget.addWidget(self.playback_screen)  # Add playback_screen to the stack
+        self.stacked_widget.addWidget(self.playback_screen)
+        self.stacked_widget.addWidget(self.settings_screen)
 
     def handle_live_feed_navigation(self, camera_id):
         """Handle navigation to the live feed screen for a specific camera."""
@@ -278,6 +272,10 @@ class MainWindow(QMainWindow):
             )
             # Search filter for users
             self.header.search_text_changed.connect(self.user_management_screen.filter_users)
+
+        elif title == "Settings":
+            self.header.set_search_box_visibility(False)
+            self.header.set_action_button("", visible=False)
 
         else:
             # Future screens
