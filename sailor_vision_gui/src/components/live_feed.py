@@ -216,13 +216,8 @@ class ExpandedCameraWidget(QWidget):
         self.pixmap = pixmap
         self.last_update_time = 0  # Timestamp of the last frame update
         self.update_interval = 0.016  # ~60 FPS (16ms between frames)
-        self.frame_queue = []  # Queue to store frames if they come in too fast
-        self.max_queue_size = 5  # Maximum number of frames to queue
+        # Suppression de la file d'attente complexe qui cause des problèmes
         self.init_ui()
-        
-        self.playback_timer = QTimer(self)
-        self.playback_timer.timeout.connect(self.process_frame_queue)
-        self.playback_timer.start(16)  # ~60 FPS for smooth playback
     
     def init_ui(self):
         self.setObjectName("expandedCameraWidget")
@@ -284,51 +279,32 @@ class ExpandedCameraWidget(QWidget):
     def update_feed(self, pixmap):
         """
         Updates the displayed image in the expanded camera feed.
+        Simplified to directly update the pixmap without queue.
         """
-        if pixmap.isNull():
-            return
-            
-        if len(self.frame_queue) < self.max_queue_size:
-            self.frame_queue.append(pixmap)
-    
-    def process_frame_queue(self):
-        """Process queued frames for smooth playback"""
-        if not self.frame_queue:
-            return
-            
-        pixmap = self.frame_queue.pop(0)
-        
-        current_time = time()
-        if current_time - self.last_update_time < self.update_interval:
-            self.frame_queue.insert(0, pixmap)
-            return
-
-        self.last_update_time = current_time
-        
-        if self.feed_container and not pixmap.isNull():
-            container_size = self.feed_container.size()
-            
-            if container_size.width() <= 0 or container_size.height() <= 0:
+        try:
+            if pixmap.isNull():
                 return
                 
-            scaled_pixmap = pixmap.scaled(
-                container_size.width(), 
-                container_size.height(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
+            self.pixmap = pixmap  # Save the pixmap for resize events
             
-            self.feed_container.setPixmap(scaled_pixmap)
-            
-            self.pixmap = pixmap
+            if self.feed_container:
+                container_size = self.feed_container.size()
+                
+                if container_size.width() <= 0 or container_size.height() <= 0:
+                    return
+                    
+                scaled_pixmap = pixmap.scaled(
+                    container_size.width(), 
+                    container_size.height(),
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                )
+                
+                self.feed_container.setPixmap(scaled_pixmap)
+        except Exception as e:
+            logger.error(f"Error in ExpandedCameraWidget.update_feed: {str(e)}")
     
     def closeEvent(self, event):
-        if hasattr(self, 'playback_timer') and self.playback_timer.isActive():
-            self.playback_timer.stop()
-        
-        if hasattr(self, 'frame_queue'):
-            self.frame_queue.clear()
-            
         event.accept()
     
     def resizeEvent(self, event):
@@ -632,14 +608,15 @@ class LiveFeedScreen(QWidget):
 
             self.content_widget.setVisible(False)
             
-            if hasattr(self, 'ros_bridge') and self.ros_bridge:
-                try:
-                    self.ros_bridge.image_received.disconnect(self.update_expanded_cam_feed)
-                except:
-                    pass
-                
-                self.ros_bridge.image_received.connect(self.update_expanded_cam_feed, Qt.QueuedConnection)
-                logger.info(f"Connected image_received signal to expanded view for camera {camera_id}")
+            # Déconnecter d'abord pour éviter les doubles connexions
+            try:
+                self.ros_bridge.image_received.disconnect(self.update_expanded_cam_feed)
+            except:
+                pass
+            
+            # Connexion directe du signal sans Qt.QueuedConnection
+            self.ros_bridge.image_received.connect(self.update_expanded_cam_feed)
+            logger.info(f"Connected image_received signal to expanded view for camera {camera_id}")
 
             logger.info(f"Camera {camera_data['name']} expanded successfully")
         except Exception as e:
@@ -661,7 +638,11 @@ class LiveFeedScreen(QWidget):
             
             logger.info("Expanded view closed")
 
-    def update_expanded_cam_feed(self, cv_image):
+    def update_expanded_cam_feed(self, cv_image, topic=None):
+        """
+        Update the expanded camera feed with a new image.
+        Modified to use direct connection instead of QMetaObject.invokeMethod.
+        """
         if self.expanded_camera_widget is None or not hasattr(self.expanded_camera_widget, 'feed_container'):
             return
             
@@ -675,25 +656,19 @@ class LiveFeedScreen(QWidget):
             
             pixmap = QPixmap.fromImage(q_image)
             
-            QMetaObject.invokeMethod(
-                self.expanded_camera_widget,
-                "update_feed",
-                Qt.QueuedConnection,
-                Q_ARG(QPixmap, pixmap)
-            )
+            # Utiliser directement update_feed au lieu de QMetaObject.invokeMethod
+            self.expanded_camera_widget.update_feed(pixmap)
             
+            # Aussi mettre à jour le widget de caméra normal si nécessaire
             if hasattr(self.expanded_camera_widget, 'camera_id'):
                 camera_id = self.expanded_camera_widget.camera_id
                 if camera_id in self.camera_widgets:
-                    QMetaObject.invokeMethod(
-                        self.camera_widgets[camera_id],
-                        "update_feed",
-                        Qt.QueuedConnection,
-                        Q_ARG(QPixmap, pixmap)
-                    )
-            
+                    self.camera_widgets[camera_id].update_feed(pixmap)
+                
         except Exception as e:
             logger.error(f"Error updating expanded feed: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     def ensure_camera_streaming(self, camera_id):
         try:
