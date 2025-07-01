@@ -1,16 +1,22 @@
 import os
 import logging
+import uuid
+from PyQt5.QtCore import QObject, pyqtSignal
 from sqlalchemy.orm import Session
 from datetime import datetime
 from database import get_session
-from models import Recording, Camera, StorageType
+from models import Recording, Camera, StorageType, Settings
 
 logger = logging.getLogger(__name__)
 
-class StorageService:
-    def __init__(self):
+class StorageService(QObject):
+    # Signal émis quand un nouvel enregistrement est ajouté
+    recording_added = pyqtSignal(int)  # recording_id
+    
+    def __init__(self, db_session=None):
         """Initialize the storage service"""
-        self.db_session = get_session()
+        super().__init__()
+        self.db_session = db_session or get_session()
         logger.info("Storage service initialized")
 
     def store_video_metadata(self, metadata):
@@ -18,7 +24,10 @@ class StorageService:
         Store video metadata in database
         
         Args:
-            metadata (dict): Video metadata including path, name, class_name, start_time, duration, frame_count, size, resolution, storage_type
+            metadata (dict): Video metadata including path, class_name, etc.
+        
+        Returns:
+            int: ID of the created recording, or None if failed
         """
         try:
             # Extract file path and verify its existence
@@ -26,12 +35,22 @@ class StorageService:
             if not os.path.exists(file_path):
                 logger.error(f"File does not exist: {file_path}")
                 return None
-                
-            # Retrieve or create the camera (for testing, use the first camera)
-            camera = self.db_session.query(Camera).first()
+            
+            # Trouver la caméra correspondante en fonction du nom ou de l'ID fournis
+            camera = None
+            camera_name = metadata.get("camera_name")
+            
+            if camera_name:
+                camera = self.db_session.query(Camera).filter_by(name=f"AutoCam {camera_name}").first()
+            
+            # Si on n'a pas trouvé de caméra, utiliser la première disponible
             if not camera:
-                logger.warning("No camera found, using default camera ID 1")
-                camera_id = 1
+                camera = self.db_session.query(Camera).first()
+                if not camera:
+                    logger.warning("No camera found, using default camera ID 1")
+                    camera_id = 1
+                else:
+                    camera_id = camera.id
             else:
                 camera_id = camera.id
             
@@ -39,14 +58,18 @@ class StorageService:
             start_time = metadata.get("start_time")
             if isinstance(start_time, str):
                 start_time = datetime.fromisoformat(start_time)
+                
+            end_time = metadata.get("end_time")
+            if isinstance(end_time, str):
+                end_time = datetime.fromisoformat(end_time)
             
             # Create a new recording
             new_recording = Recording(
                 camera_id=camera_id,
                 file_path=file_path,
-                name=metadata.get("class_name"),  # Use the name field (class_name)
+                name=metadata.get("class_name"),  # Use class_name for the name field
                 start_time=start_time,
-                end_time=datetime.now(),  # End time is now
+                end_time=end_time,
                 duration=metadata.get("duration", 0),
                 size=metadata.get("size", 0),
                 resolution=metadata.get("resolution", "1920x1080"),
@@ -58,6 +81,10 @@ class StorageService:
             self.db_session.commit()
             
             logger.info(f"Saved recording metadata to database: ID={new_recording.id}, Name={new_recording.name}, Path={file_path}")
+            
+            # Émettre le signal pour notification
+            self.recording_added.emit(new_recording.id)
+            
             return new_recording.id
             
         except Exception as e:
@@ -65,7 +92,7 @@ class StorageService:
             self.db_session.rollback()
             return None
 
-    def get_recordings(self, limit=10, offset=0, camera_id=None, start_date=None, end_date=None, detection_class=None):
+    def get_recordings(self, limit=10, offset=0, camera_id=None, start_date=None, end_date=None, detection_class=None, search_term=None):
         """
         Récupérer les enregistrements selon les critères de filtrage
         
@@ -76,6 +103,7 @@ class StorageService:
             start_date (datetime, optional): Date de début pour le filtrage
             end_date (datetime, optional): Date de fin pour le filtrage
             detection_class (str, optional): Classe de détection associée
+            search_term (str, optional): Termes de recherche dans le nom de l'enregistrement
             
         Returns:
             list: Liste des enregistrements
@@ -92,6 +120,11 @@ class StorageService:
                 
             if end_date:
                 query = query.filter(Recording.start_time <= end_date)
+                
+            if search_term:
+                # Recherche dans le nom de l'enregistrement
+                search_pattern = f"%{search_term}%"
+                query = query.filter(Recording.name.like(search_pattern))
                 
             # Limiter et décaler les résultats
             recordings = query.limit(limit).offset(offset).all()
@@ -178,3 +211,27 @@ class StorageService:
         except Exception as e:
             logger.error(f"Error fetching recordings by date {date}: {str(e)}")
             return []
+
+    def get_storage_type(self):
+        """Retrieve the current storage type from the database or configuration"""
+        try:
+            # Example logic: Fetch storage type from settings table or configuration
+            storage_setting = self.db_session.query(Settings).filter_by(key="storage_type").first()
+            if storage_setting:
+                return storage_setting.value
+            return "Local"  # Default storage type
+        except Exception as e:
+            logger.error(f"Error retrieving storage type: {str(e)}")
+            return "Local"  # Fallback to default
+
+    def get_storage_usage_percent(self):
+        """Calculate and return the storage usage percentage"""
+        try:
+            # Example logic: Fetch total and used storage from the database or configuration
+            total_storage = 1000  # Example total storage in GB
+            used_storage = 250   # Example used storage in GB
+            usage_percent = (used_storage / total_storage) * 100
+            return usage_percent
+        except Exception as e:
+            logger.error(f"Error calculating storage usage percent: {str(e)}")
+            return 0  # Fallback to 0% usage
