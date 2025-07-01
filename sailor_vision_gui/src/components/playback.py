@@ -1,9 +1,11 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QFrame, QScrollArea, QLineEdit,
-                             QToolButton, QComboBox, QPushButton, QSlider, QGridLayout,
-                             QDateEdit, QMessageBox, QSplitter, QSizePolicy)
-from PyQt5.QtCore import Qt, QDate, QTime, QSize, QTimer, QThread, pyqtSignal
+                             QToolButton, QComboBox, QSlider, QGridLayout,
+                             QDateEdit, QMessageBox, QSplitter, QSizePolicy, QGraphicsScene, QGraphicsView, QMenu)
+from PyQt5.QtCore import Qt, QDate, QTime, QSize, QTimer, QThread, pyqtSignal, QUrl
 from PyQt5.QtGui import QPixmap, QIcon
+from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QMediaContent
+from PyQt5.QtMultimediaWidgets import QGraphicsVideoItem
 import datetime
 import logging
 import os
@@ -151,6 +153,9 @@ class PlaybackScreen(QWidget):
         self.camera_service = CameraService(db_session=self.db_session)
         self.storage_service = StorageService()
         
+        # Connecter le signal de nouvel enregistrement
+        self.storage_service.recording_added.connect(self.on_new_recording)
+        
         # State and configuration
         self.current_page = 1
         self.recordings_per_page = 5
@@ -286,9 +291,10 @@ class PlaybackScreen(QWidget):
         bottom_layout.setSpacing(15)
 
         # Video player section
-        self.video_player = VideoPlayerWidget()
+        self.video_player = VideoPlayerWidget()  # Use the optimized VideoPlayerWidget
         self.video_player.setVisible(False)
         self.video_player.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.video_player.setMinimumHeight(500)  # Increase minimum height from 400 to 500
         bottom_layout.addWidget(self.video_player)
 
         # Video details popup
@@ -333,8 +339,8 @@ class PlaybackScreen(QWidget):
         # Add top and bottom sections to the splitter
         main_splitter.addWidget(top_section)
         main_splitter.addWidget(bottom_section)
-        main_splitter.setStretchFactor(0, 3)
-        main_splitter.setStretchFactor(1, 1)
+        main_splitter.setStretchFactor(0, 1)  # Changed from 2 to 1 (top section)
+        main_splitter.setStretchFactor(1, 4)  # Increased from 3 to 4 (bottom section)
 
         # Add splitter to the content layout
         content_layout.addWidget(main_splitter)
@@ -417,7 +423,8 @@ class PlaybackScreen(QWidget):
         # Get the total number of recordings (for pagination)
         all_recordings = self.storage_service.get_recordings(
             camera_id=self.camera_filter,
-            start_date=date_filter  # Pass the converted date filter
+            start_date=date_filter,
+            search_term=self.search_text
         )
         total_recordings = len(all_recordings)
 
@@ -426,7 +433,8 @@ class PlaybackScreen(QWidget):
             limit=self.recordings_per_page,
             offset=offset,
             camera_id=self.camera_filter,
-            start_date=date_filter  # Pass the converted date filter
+            start_date=date_filter,
+            search_term=self.search_text
         )
         
         # Clear existing recordings
@@ -435,12 +443,12 @@ class PlaybackScreen(QWidget):
         # Add recording items to the list
         if recordings:
             for recording in recordings:
-                recording_item = RecordingItem(recording, self)  # Pass self to RecordingItem
+                recording_item = RecordingItem(recording, self)
                 self.recordings_list.addWidget(recording_item)
         else:
-            # Message if no recordings are found
-            no_recordings = QLabel("No recordings found")
+            no_recordings = QLabel("Aucun enregistrement trouvé")
             no_recordings.setAlignment(Qt.AlignCenter)
+            no_recordings.setObjectName("noRecordings")
             self.recordings_list.addWidget(no_recordings)
         
         # Update pagination
@@ -573,3 +581,132 @@ class PlaybackScreen(QWidget):
                 sub_layout = item.layout()
                 if sub_layout:
                     self.clear_layout(sub_layout)
+
+    def on_new_recording(self, recording_id):
+        """Méthode appelée quand un nouvel enregistrement est ajouté"""
+        logger.info(f"New recording notification received: ID={recording_id}")
+        
+        # Si on est sur la première page, actualiser immédiatement
+        if self.current_page == 1:
+            self.load_recordings()
+            
+            # Afficher une notification à l'utilisateur
+            recording = self.storage_service.get_recording(recording_id)
+            if recording:
+                class_name = recording.name
+                camera_name = recording.camera.name if recording.camera else "Unknown"
+                
+                notification_label = QLabel(f"Nouveau {class_name} détecté par {camera_name}")
+                notification_label.setObjectName("newRecordingNotification")
+                notification_label.setStyleSheet("""
+                    background-color: #2196F3;
+                    color: white;
+                    padding: 8px;
+                    border-radius: 4px;
+                    font-weight: bold;
+                """)
+                
+                # Ajouter la notification au début de la liste
+                if self.recordings_list.count() > 0:
+                    self.recordings_list.insertWidget(0, notification_label)
+                else:
+                    self.recordings_list.addWidget(notification_label)
+                
+                # Timer pour effacer la notification après 5 secondes
+                QTimer.singleShot(5000, lambda: notification_label.deleteLater())
+
+class VideoPlayerWidget(QWidget):
+    """Optimized Video Player Widget with enhanced controls."""
+    def __init__(self):
+        super().__init__()
+        self.mediaPlayer = QMediaPlayer()
+        self.playlist = QMediaPlaylist()
+        self.mediaPlayer.setPlaylist(self.playlist)
+
+        self.videoItem = QGraphicsVideoItem()
+        self.videoItem.setAspectRatioMode(Qt.KeepAspectRatio)
+
+        scene = QGraphicsScene(self)
+        self.graphicsView = QGraphicsView(scene)
+        self.graphicsView.setMinimumHeight(450)  # Set minimum height for the graphics view
+        self.graphicsView.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        scene.addItem(self.videoItem)
+        self.mediaPlayer.setVideoOutput(self.videoItem)
+
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)  # Remove margins to maximize video space
+
+        # Video display
+        layout.addWidget(self.graphicsView, 1)  # Add stretch factor of 1
+
+        # Playback controls
+        controls = QHBoxLayout()
+        self.playButton = QPushButton("Play")
+        self.playButton.clicked.connect(self.toggle_play)
+        controls.addWidget(self.playButton)
+
+        self.stopButton = QPushButton("Stop")
+        self.stopButton.clicked.connect(self.mediaPlayer.stop)
+        controls.addWidget(self.stopButton)
+
+        self.skipBackButton = QPushButton("<<")
+        self.skipBackButton.clicked.connect(lambda: self.mediaPlayer.setPosition(self.mediaPlayer.position() - 5000))
+        controls.addWidget(self.skipBackButton)
+
+        self.skipForwardButton = QPushButton(">>")
+        self.skipForwardButton.clicked.connect(lambda: self.mediaPlayer.setPosition(self.mediaPlayer.position() + 5000))
+        controls.addWidget(self.skipForwardButton)
+
+        self.volumeSlider = QSlider(Qt.Horizontal)
+        self.volumeSlider.setRange(0, 100)
+        self.volumeSlider.setValue(50)
+        self.volumeSlider.valueChanged.connect(self.mediaPlayer.setVolume)
+        controls.addWidget(self.volumeSlider)
+
+        layout.addLayout(controls)
+
+        # Playback speed control
+        self.speedButton = QPushButton("1x")
+        self.speedMenu = QMenu()
+        for speed in ["0.5x", "1x", "1.5x", "2x"]:
+            action = self.speedMenu.addAction(speed)
+            action.triggered.connect(lambda _, s=speed: self.set_playback_speed(s))
+        self.speedButton.setMenu(self.speedMenu)
+        controls.addWidget(self.speedButton)
+
+        # Aspect ratio control
+        self.aspectRatioButton = QPushButton("Aspect Ratio")
+        self.aspectRatioButton.setCheckable(True)
+        self.aspectRatioButton.toggled.connect(self.toggle_aspect_ratio)
+        controls.addWidget(self.aspectRatioButton)
+
+    def toggle_play(self):
+        if self.mediaPlayer.state() == QMediaPlayer.PlayingState:
+            self.mediaPlayer.pause()
+            self.playButton.setText("Play")
+        else:
+            self.mediaPlayer.play()
+            self.playButton.setText("Pause")
+
+    def play(self):
+        """Start media playback and update button text"""
+        self.mediaPlayer.play()
+        self.playButton.setText("Pause")
+
+    def set_playback_speed(self, speed):
+        rate = float(speed[:-1])
+        self.mediaPlayer.setPlaybackRate(rate)
+        self.speedButton.setText(speed)
+
+    def toggle_aspect_ratio(self, checked):
+        mode = Qt.KeepAspectRatio if checked else Qt.IgnoreAspectRatio
+        self.videoItem.setAspectRatioMode(mode)
+
+    def set_source(self, file_path):
+        self.playlist.clear()
+        self.playlist.addMedia(QMediaContent(QUrl.fromLocalFile(file_path)))
+        self.playlist.setCurrentIndex(0)
+        self.mediaPlayer.play()
