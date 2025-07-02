@@ -582,8 +582,21 @@ class DashboardScreen(QWidget):
         """Update a specific camera feed with new frame and set status active in DB."""
         logger.info(f"Updating feed for camera ID: {camera_id}")
         self.camera_frames[camera_id] = pixmap
-        # Set camera as active in DB
-        self.camera_service.set_camera_active(camera_id, True)
+        
+        # Utiliser une nouvelle session pour cette opération au lieu de réutiliser self.camera_service
+        try:
+            # Créer une session fraîche pour cette opération spécifique
+            new_session = get_session()
+            camera_service = CameraService(db_session=new_session)
+            camera_service.set_camera_active(camera_id, True)
+            new_session.commit()
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour de l'état de la caméra: {str(e)}")
+        finally:
+            # Toujours fermer la session
+            if 'new_session' in locals():
+                close_session(new_session)
+        
         # Reload cameras from DB to ensure status is up-to-date everywhere
         self.load_cameras()
 
@@ -592,11 +605,24 @@ class DashboardScreen(QWidget):
         logger.info(f"Feed stopped for camera ID: {camera_id}")
         if camera_id in self.camera_frames:
             del self.camera_frames[camera_id]
-        # Set camera as inactive in DB
-        self.camera_service.set_camera_active(camera_id, False)
+            
+        # Utiliser une nouvelle session pour cette opération également
+        try:
+            # Créer une session fraîche pour cette opération spécifique
+            new_session = get_session()
+            camera_service = CameraService(db_session=new_session)
+            camera_service.set_camera_active(camera_id, False)
+            new_session.commit()
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour de l'état de la caméra: {str(e)}")
+        finally:
+            # Toujours fermer la session
+            if 'new_session' in locals():
+                close_session(new_session)
+        
         # Reload cameras from DB to ensure status is up-to-date everywhere
         self.load_cameras()
-    
+
     def view_all_alerts(self):
         """Navigate to the alerts screen if there are active alerts, otherwise show a dialog"""
         session = get_session()
@@ -747,3 +773,26 @@ class DashboardScreen(QWidget):
     def reset_clicked_camera(self):
         """Reset the clicked camera ID."""
         self.clicked_camera_id = None
+
+    def refresh_cameras(self):
+        """Refresh camera data from the database when their status changes"""
+        logger.info("Refreshing cameras in DashboardScreen from database")
+        # Simply call the existing load_cameras method to get fresh data
+        self.load_cameras()
+
+    def prepare_screen(self):
+        """Préparer l'écran avant qu'il ne devienne actif"""
+        try:
+            # Recharger les données fraîches
+            self.update_data()
+            logger.info("Dashboard screen prepared")
+        except Exception as e:
+            logger.error(f"Error preparing dashboard screen: {e}")
+        
+    def cleanup(self):
+        """Nettoyer les ressources quand on quitte l'écran"""
+        try:
+            # Rien de spécial à nettoyer pour le dashboard
+            pass
+        except Exception as e:
+            logger.error(f"Error cleaning up dashboard screen: {e}")
