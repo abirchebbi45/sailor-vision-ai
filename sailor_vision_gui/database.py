@@ -38,12 +38,29 @@ def init_db():
         return False
 
 def get_session():
-    """Get a new database session"""
-    if Session is None:
-        init_db()
-    return Session()
+    """Get a new session."""
+    global engine, Session  # Déplacé au début de la fonction
+    
+    try:
+        session = Session()
+        return session
+    except Exception as e:
+        logger.error(f"Error creating DB session: {e}")
+        # Essayer de recréer l'engine et le sessionmaker
+        import sqlalchemy
+        try:
+            db_url = get_db_url()  # Utiliser get_db_url() au lieu de DB_URL
+            engine = sqlalchemy.create_engine(db_url)
+            Session = sqlalchemy.orm.sessionmaker(bind=engine)
+            return Session()
+        except Exception as e2:
+            logger.error(f"Could not recover database connection: {e2}")
+            raise
 
 def close_session(session):
-    """Close database session"""
+    """Close a session safely."""
     if session:
-        session.close()
+        try:
+            session.close()
+        except Exception as e:
+            logger.error(f"Error closing DB session: {e}")
