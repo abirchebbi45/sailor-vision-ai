@@ -55,3 +55,23 @@ class CameraService:
             self.db_session.commit()
             self.db_session.flush()  # Ajouté pour forcer la synchro immédiate
         return camera
+    
+    def set_cameras_active(self, camera_ids, active=True):
+        """Set is_active status for multiple cameras at once."""
+        try:
+            if not camera_ids:
+                return 0  # Rien à mettre à jour
+                
+            # Mise à jour groupée pour de meilleures performances
+            result = self.db_session.query(Camera).filter(Camera.id.in_(camera_ids)).update(
+                {"is_active": active}, synchronize_session=False
+            )
+            self.db_session.commit()
+            self.db_session.flush()  # Forcer la synchro immédiate
+            
+            logger.info(f"Mise à jour groupée de {result} caméras avec statut active={active}")
+            return result
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour groupée des caméras: {e}")
+            self.db_session.rollback()
+            return 0
