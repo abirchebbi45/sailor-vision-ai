@@ -20,6 +20,8 @@ from src.components.playback import PlaybackScreen
 from src.components.shared import Sidebar, HeaderWidget
 from src.components.settings import SettingsScreen
 
+# Import le watchdog ROS
+from shared.ros_watchdog import ROSWatchdog
 
 from database import init_db, get_session
 from models import User, Camera, Alert, Recording
@@ -55,6 +57,13 @@ class MainWindow(QMainWindow):
         # Initialize the DetectionRecorder
         self.detection_recorder = DetectionRecorder(self.ros_node, ros_bridge=self.ros_bridge)
         logger.info("Detection recorder initialized")
+        
+        # Initialize the ROS Watchdog
+        self.ros_watchdog = ROSWatchdog(ros_node)
+        logger.info("ROS Watchdog initialized")
+        
+        # Connect the ros_bridge to watchdog for topic activity monitoring
+        self.ros_bridge.image_received.connect(self.on_image_activity)
 
         # Main window configuration
         self.setWindowTitle("Sailor Vision AI - Maritime Surveillance")
@@ -78,6 +87,12 @@ class MainWindow(QMainWindow):
         self.current_content = None
         self.stacked_widget = None
         self.sidebar = None
+    
+    def on_image_activity(self, _, topic):
+        """Called when an image is received on a ROS topic"""
+        # Informer le watchdog de l'activité sur ce topic
+        if hasattr(self, 'ros_watchdog'):
+            self.ros_watchdog.register_topic_activity(topic)
 
     def handle_login_success(self, user_data):
         """Handle successful login and transition to the main interface"""
@@ -135,10 +150,10 @@ class MainWindow(QMainWindow):
             lambda: self.switch_view("Live Feed", self.live_feed_screen)
         )
         self.sidebar.playback_clicked.connect(
-            lambda: self.switch_view("Playback", self.playback_screen)  # To be implemented
+            lambda: self.switch_view("Playback", self.playback_screen)
         )
         self.sidebar.alerts_clicked.connect(
-            lambda: self.switch_view("Alerts", self.alerts_screen )  
+            lambda: self.switch_view("Alerts", self.alerts_screen)  
         )
         self.sidebar.user_management_clicked.connect(
             lambda: self.switch_view("User Management",  self.user_management_screen)  
@@ -154,30 +169,192 @@ class MainWindow(QMainWindow):
         # Initial view
         self.switch_view("Dashboard", self.dashboard_screen)
 
+    def switch_view(self, title, widget):
+        """Change the active view in the application"""
+        if not widget:
+            logger.warning(f"Screen '{title}' not implemented")
+            return
+            
+        try:
+            # Désactiver temporairement tous les signaux pour éviter les crashes
+            # lors du changement d'écran
+            previous_widget = self.stacked_widget.currentWidget()
+            if previous_widget:
+                previous_widget.blockSignals(True)
+                
+            # Display the new page
+            self.header.set_title(title)
+            self.stacked_widget.setCurrentWidget(widget)
+            
+            # Réactiver les signaux du widget précédent
+            if previous_widget:
+                previous_widget.blockSignals(False)
+
+            # Also update the sidebar active button
+            if title == "Dashboard":
+                self.sidebar.set_active_button(self.sidebar.dashboard_btn)
+            elif title == "Live Feed":
+                self.sidebar.set_active_button(self.sidebar.live_feed_btn)
+            elif title == "Playback":
+                self.sidebar.set_active_button(self.sidebar.playback_btn)
+            elif title == "Alerts":
+                self.sidebar.set_active_button(self.sidebar.alerts_btn)
+            elif title == "User Management":
+                self.sidebar.set_active_button(self.sidebar.user_mgmt_btn)
+            elif title == "Settings":
+                self.sidebar.set_active_button(self.sidebar.settings_btn)
+
+            # Disconnect and hide the previous action button
+            try:
+                self.header.action_button_clicked.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+            self.header.set_action_button("", visible=False)
+
+            # Disconnect the previous search handler (if used)
+            try:
+                self.header.search_text_changed.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+
+            # Specific configuration for each screen
+            if title == "Dashboard":
+                self.header.set_search_box_visibility(True)
+                self.header.set_search_placeholder("Search cameras, alerts...")
+                # If you have a filter to connect:
+                # self.header.search_text_changed.connect(self.dashboard_screen.filter_items)
+
+            elif title == "Live Feed":
+                self.header.set_search_box_visibility(True)
+                self.header.set_search_placeholder("Search cameras...")
+                # Connect search to camera filter
+                self.header.search_text_changed.connect(self.live_feed_screen.filter_cameras)
+
+            elif title == "Alerts":
+                # Show the search box and change the placeholder
+                self.header.set_search_box_visibility(True)
+                self.header.set_search_placeholder("Search alerts…")
+
+                # Disconnect old connections and connect to the filter
+                try: self.header.search_text_changed.disconnect()
+                except: pass
+                self.header.search_text_changed.connect(self.alerts_screen.filter_alerts)
+
+                # No action button here
+                self.header.set_action_button("", False)
+
+            elif title == "User Management":
+                self.header.set_search_box_visibility(True)
+                self.header.set_search_placeholder("Search users...")
+                # "Add User" button
+                self.header.set_action_button("Add User", visible=True)
+                self.header.action_button_clicked.connect(
+                    self.user_management_screen.on_add_user_clicked
+                )
+                # Search filter for users
+                self.header.search_text_changed.connect(self.user_management_screen.filter_users)
+
+            elif title == "Settings":
+                self.header.set_search_box_visibility(False)
+                self.header.set_action_button("", visible=False)
+
+            else:
+                # Future screens
+                self.header.set_search_box_visibility(True)
+                self.header.set_search_placeholder(f"Search {title.lower()}…")
+                # No default action button
+        except Exception as e:
+            logger.error(f"Error during screen switch: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+
     def initialize_screens(self, user_data):
         """Initialize different screens for the application"""
-        db_session = get_session()
-        self.dashboard_screen = DashboardScreen(user_data=user_data)
-        self.live_feed_screen = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node, ros_bridge=self.ros_bridge)
-        self.alerts_screen = AlertsScreen(user_data=user_data, ros_node=self.ros_node)
-        self.user_management_screen = UserManagementScreen(user_data=user_data, db_session=db_session)
-        self.playback_screen = PlaybackScreen(user_data=user_data, ros_node=self.ros_node)
-        self.settings_screen = SettingsScreen(user=user_data, db_session=db_session)
+        try:
+            db_session = get_session()
+            self.dashboard_screen = DashboardScreen(user_data=user_data)
+            self.live_feed_screen = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node, ros_bridge=self.ros_bridge)
+            self.alerts_screen = AlertsScreen(user_data=user_data, ros_node=self.ros_node)
+            self.user_management_screen = UserManagementScreen(user_data=user_data, db_session=db_session)
+            self.playback_screen = PlaybackScreen(user_data=user_data, ros_node=self.ros_node)
+            self.settings_screen = SettingsScreen(user=user_data, db_session=db_session)
 
-        # Connect LiveFeedScreen camera signals to DashboardScreen
-        self.live_feed_screen.frame_updated.connect(self.dashboard_screen.update_camera_feed)
-        self.live_feed_screen.feed_stopped.connect(self.dashboard_screen.camera_feed_stopped)
+            # Connect LiveFeedScreen camera signals to DashboardScreen
+            self.live_feed_screen.frame_updated.connect(self.dashboard_screen.update_camera_feed)
+            self.live_feed_screen.feed_stopped.connect(self.dashboard_screen.camera_feed_stopped)
+            
+            # Connect DashboardScreen signals to LiveFeedScreen navigation
+            self.dashboard_screen.navigate_to_live_feed.connect(self.handle_live_feed_navigation)
+            
+            # Connecter les signaux du watchdog aux écrans
+            if hasattr(self, 'ros_watchdog'):
+                self.ros_watchdog.cameras_status_changed.connect(self.on_cameras_status_changed)
+                self.ros_watchdog.ros_status_changed.connect(self.on_ros_status_changed)
+
+            # Add screens to the stacked widget
+            self.stacked_widget.addWidget(self.dashboard_screen)
+            self.stacked_widget.addWidget(self.live_feed_screen)
+            self.stacked_widget.addWidget(self.alerts_screen)
+            self.stacked_widget.addWidget(self.user_management_screen)
+            self.stacked_widget.addWidget(self.playback_screen)
+            self.stacked_widget.addWidget(self.settings_screen)
+            
+            # Ajouter un mécanisme de préparation et nettoyage des écrans
+            self.stacked_widget.currentChanged.connect(self.on_screen_changed)
+            
+        except Exception as e:
+            logger.error(f"Error initializing screens: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+    def on_screen_changed(self, index):
+        """
+        Appelé quand l'écran actif change pour préparer le nouvel écran
+        et nettoyer l'ancien
+        """
+        try:
+            current_widget = self.stacked_widget.widget(index)
+            
+            # Préparer le nouvel écran si nécessaire
+            if hasattr(current_widget, 'prepare_screen'):
+                current_widget.prepare_screen()
+                
+            # Pour tous les autres écrans, appeler cleanup si disponible
+            for i in range(self.stacked_widget.count()):
+                if i != index:
+                    widget = self.stacked_widget.widget(i)
+                    if widget and hasattr(widget, 'cleanup'):
+                        widget.cleanup()
+        except Exception as e:
+            logger.error(f"Error in screen transition: {e}")
+
+    def on_cameras_status_changed(self, camera_ids):
+        """Gérer le changement d'état des caméras signalé par le watchdog"""
+        logger.info(f"État des caméras modifié pour IDs: {camera_ids}")
         
-        # Connect DashboardScreen signals to LiveFeedScreen navigation
-        self.dashboard_screen.navigate_to_live_feed.connect(self.handle_live_feed_navigation)
-
-        # Add screens to the stacked widget
-        self.stacked_widget.addWidget(self.dashboard_screen)
-        self.stacked_widget.addWidget(self.live_feed_screen)
-        self.stacked_widget.addWidget(self.alerts_screen)
-        self.stacked_widget.addWidget(self.user_management_screen)
-        self.stacked_widget.addWidget(self.playback_screen)
-        self.stacked_widget.addWidget(self.settings_screen)
+        # Mettre à jour les écrans Dashboard et LiveFeed
+        if hasattr(self, 'dashboard_screen'):
+            self.dashboard_screen.refresh_cameras()
+            
+        if hasattr(self, 'live_feed_screen'):
+            self.live_feed_screen.refresh_cameras()
+    
+    def on_ros_status_changed(self, connected):
+        """Gérer le changement d'état global de ROS"""
+        status_msg = "connecté" if connected else "déconnecté"
+        logger.warning(f"Le système ROS est maintenant {status_msg}")
+        
+        # Afficher un message à l'utilisateur si ROS est déconnecté
+        if not connected:
+            QMessageBox.warning(
+                self, 
+                "Système ROS déconnecté", 
+                "La connexion au système ROS a été perdue. Les flux vidéo et détections ne sont plus disponibles."
+            )
+        else:
+            # ROS s'est reconnecté
+            if hasattr(self, 'header'):
+                self.header.show_notification("Système ROS reconnecté", "success")
 
     def handle_live_feed_navigation(self, camera_id):
         """Handle navigation to the live feed screen for a specific camera."""
@@ -205,90 +382,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error navigating to Live Feed: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
-
-    def switch_view(self, title, widget):
-        """Change the active view in the application"""
-        if not widget:
-            logger.warning(f"Screen '{title}' not implemented")
-            return
-
-        # Display the new page
-        self.header.set_title(title)
-        self.stacked_widget.setCurrentWidget(widget)
-
-        # Also update the sidebar active button
-        if title == "Dashboard":
-            self.sidebar.set_active_button(self.sidebar.dashboard_btn)
-        elif title == "Live Feed":
-            self.sidebar.set_active_button(self.sidebar.live_feed_btn)
-        elif title == "Playback":
-            self.sidebar.set_active_button(self.sidebar.playback_btn)
-        elif title == "Alerts":
-            self.sidebar.set_active_button(self.sidebar.alerts_btn)
-        elif title == "User Management":
-            self.sidebar.set_active_button(self.sidebar.user_mgmt_btn)
-        elif title == "Settings":
-            self.sidebar.set_active_button(self.sidebar.settings_btn)
-
-        # Disconnect and hide the previous action button
-        try:
-            self.header.action_button_clicked.disconnect()
-        except (TypeError, RuntimeError):
-            pass
-        self.header.set_action_button("", visible=False)
-
-        # Disconnect the previous search handler (if used)
-        try:
-            self.header.search_text_changed.disconnect()
-        except (TypeError, RuntimeError):
-            pass
-
-        # Specific configuration for each screen
-        if title == "Dashboard":
-            self.header.set_search_box_visibility(True)
-            self.header.set_search_placeholder("Search cameras, alerts...")
-            # If you have a filter to connect:
-            # self.header.search_text_changed.connect(self.dashboard_screen.filter_items)
-
-        elif title == "Live Feed":
-            self.header.set_search_box_visibility(True)
-            self.header.set_search_placeholder("Search cameras...")
-            # Connect search to camera filter
-            self.header.search_text_changed.connect(self.live_feed_screen.filter_cameras)
-
-        elif title == "Alerts":
-            # Show the search box and change the placeholder
-            self.header.set_search_box_visibility(True)
-            self.header.set_search_placeholder("Search alerts…")
-
-            # Disconnect old connections and connect to the filter
-            try: self.header.search_text_changed.disconnect()
-            except: pass
-            self.header.search_text_changed.connect(self.alerts_screen.filter_alerts)
-
-            # No action button here
-            self.header.set_action_button("", False)
-
-        elif title == "User Management":
-            self.header.set_search_box_visibility(True)
-            self.header.set_search_placeholder("Search users...")
-            # "Add User" button
-            self.header.set_action_button("Add User", visible=True)
-            self.header.action_button_clicked.connect(
-                self.user_management_screen.on_add_user_clicked
-            )
-            # Search filter for users
-            self.header.search_text_changed.connect(self.user_management_screen.filter_users)
-
-        elif title == "Settings":
-            self.header.set_search_box_visibility(False)
-            self.header.set_action_button("", visible=False)
-
-        else:
-            # Future screens
-            self.header.set_search_box_visibility(True)
-            self.header.set_search_placeholder(f"Search {title.lower()}…")
-            # No default action button
 
     def handle_logout(self):
         """Handle user logout."""
