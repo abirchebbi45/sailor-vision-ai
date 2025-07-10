@@ -1,5 +1,6 @@
 import sys
 import os
+import traceback
 
 # Add the src directory to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
@@ -19,15 +20,18 @@ from src.components.user_management import UserManagementScreen
 from src.components.playback import PlaybackScreen
 from src.components.shared import Sidebar, HeaderWidget
 from src.components.settings import SettingsScreen
+from src.components.camera_notification import NotificationManager
 
-# Import le watchdog ROS
+# Import the watchdog ROS
 from shared.ros_watchdog import ROSWatchdog
 
-from database import init_db, get_session
+from database import init_db, get_session, create_new_session
 from models import User, Camera, Alert, Recording
 from config import load_config
 from shared.detection_recorder import DetectionRecorder
 from shared.ros_image_listener import ROSImageBridge
+from src.services.pending_camera_manager import pending_camera_manager
+from src.services.camera_detector import camera_detector  # Import the camera detector
 
 # Configure logging
 logging.basicConfig(
@@ -54,13 +58,19 @@ class MainWindow(QMainWindow):
         # Create one shared ROSImageBridge instance for both LiveFeed and DetectionRecorder
         self.ros_bridge = ROSImageBridge(ros_node)
         
-        # Initialize the DetectionRecorder
-        self.detection_recorder = DetectionRecorder(self.ros_node, ros_bridge=self.ros_bridge)
-        logger.info("Detection recorder initialized")
-        
-        # Initialize the ROS Watchdog
+        # Initialize the ROS Watchdog BEFORE DetectionRecorder
         self.ros_watchdog = ROSWatchdog(ros_node)
         logger.info("ROS Watchdog initialized")
+        
+        # Initialize the camera detector with the ROS node
+        camera_detector.ros_node = ros_node
+        camera_detector.setup_ros_subscription()
+        
+        # Initialize the DetectionRecorder with reference to ros_watchdog
+        self.detection_recorder = DetectionRecorder(self.ros_node, ros_bridge=self.ros_bridge)
+        # Add the missing reference to ros_watchdog
+        self.detection_recorder.ros_watchdog = self.ros_watchdog
+        logger.info("Detection recorder initialized with ros_watchdog reference")
         
         # Connect the ros_bridge to watchdog for topic activity monitoring
         self.ros_bridge.image_received.connect(self.on_image_activity)
@@ -90,7 +100,7 @@ class MainWindow(QMainWindow):
     
     def on_image_activity(self, _, topic):
         """Called when an image is received on a ROS topic"""
-        # Informer le watchdog de l'activité sur ce topic
+        # Inform the watchdog of activity on this topic
         if hasattr(self, 'ros_watchdog'):
             self.ros_watchdog.register_topic_activity(topic)
 
@@ -138,6 +148,22 @@ class MainWindow(QMainWindow):
         )
         content_layout.addWidget(self.header)
 
+        # Notification manager for camera notifications
+        self.notification_manager = NotificationManager()
+        self.notification_manager.view_pending_cameras.connect(self.show_settings_pending_cameras)
+        content_layout.addWidget(self.notification_manager)
+
+        # Force load pending cameras to ensure we have the latest data
+        pending_camera_manager.load_pending_cameras()
+        
+        # Connect to pending camera manager signals - IMPORTANT: Do this BEFORE initializing screens
+        pending_camera_manager.new_camera_detected.connect(self.on_new_camera_detected)
+        pending_camera_manager.camera_approved.connect(self.on_camera_approved)
+        pending_camera_manager.camera_rejected.connect(self.on_camera_rejected)
+        
+        # Connect camera detector signals
+        camera_detector.new_camera_detected.connect(self.handle_camera_detector_signal)
+        
         # Stacked Widget for screens
         self.stacked_widget = QStackedWidget()
         self.initialize_screens(user_data)
@@ -169,15 +195,52 @@ class MainWindow(QMainWindow):
         # Initial view
         self.switch_view("Dashboard", self.dashboard_screen)
 
+    def handle_camera_detector_signal(self, camera_id: str, camera_name: str):
+        """Handle camera detector signal and trigger notification"""
+        logger.info(f"Camera detector signal received: {camera_name} (ID: {camera_id})")
+        
+        try:
+            # Extract device path from camera_id
+            device_path = "/dev/video4"  # Default
+            if "video" in camera_id:
+                parts = camera_id.split("_")
+                if len(parts) > 1 and "video" in parts[1]:
+                    device_num = parts[1].replace("video", "")
+                    device_path = f"/dev/video{device_num}"
+        
+            # Get pending count
+            pending_count = pending_camera_manager.get_pending_count()
+            logger.info(f"Showing notification for {camera_name}, device: {device_path}, pending count: {pending_count}")
+            
+            # Show notification - IMPORTANT: Use QTimer to ensure notification displays after UI is ready
+            QTimer.singleShot(100, lambda: self.notification_manager.show_camera_notification(
+                camera_name, device_path, pending_count))
+            
+            logger.info(f"✅ Notification queued for {camera_name}")
+        except Exception as e:
+            logger.error(f"Error showing camera notification: {e}")
+            traceback.print_exc()
+
+    def on_new_camera_detected(self, camera_id, camera_name, camera_ip):
+        """Handle a new camera detection from pending camera manager"""
+        logger.info(f"New camera detected: {camera_name} ({camera_ip})")
+        if hasattr(self, 'notification_manager'):
+            pending_count = len(pending_camera_manager.pending_cameras)
+            self.notification_manager.show_camera_notification(camera_name, camera_ip, pending_count)
+
     def switch_view(self, title, widget):
         """Change the active view in the application"""
         if not widget:
-            logger.warning(f"Screen '{title}' not implemented")
+            logger.warning(f"Screen '{title}' not implemented or failed to initialize")
+            return
+        
+        # Verify that the widget is in the stack
+        if widget not in [self.stacked_widget.widget(i) for i in range(self.stacked_widget.count())]:
+            logger.error(f"Widget for '{title}' not found in stacked widget")
             return
             
         try:
-            # Désactiver temporairement tous les signaux pour éviter les crashes
-            # lors du changement d'écran
+            # Temporarily disable all signals to avoid crashes during screen changes
             previous_widget = self.stacked_widget.currentWidget()
             if previous_widget:
                 previous_widget.blockSignals(True)
@@ -186,11 +249,11 @@ class MainWindow(QMainWindow):
             self.header.set_title(title)
             self.stacked_widget.setCurrentWidget(widget)
             
-            # Réactiver les signaux du widget précédent
+            # Re-enable signals for the previous widget
             if previous_widget:
                 previous_widget.blockSignals(False)
 
-            # Also update the sidebar active button
+            # Update the sidebar active button
             if title == "Dashboard":
                 self.sidebar.set_active_button(self.sidebar.dashboard_btn)
             elif title == "Live Feed":
@@ -209,8 +272,9 @@ class MainWindow(QMainWindow):
                 self.header.action_button_clicked.disconnect()
             except (TypeError, RuntimeError):
                 pass
+                
             self.header.set_action_button("", visible=False)
-
+            
             # Disconnect the previous search handler (if used)
             try:
                 self.header.search_text_changed.disconnect()
@@ -221,105 +285,146 @@ class MainWindow(QMainWindow):
             if title == "Dashboard":
                 self.header.set_search_box_visibility(True)
                 self.header.set_search_placeholder("Search cameras, alerts...")
-                # If you have a filter to connect:
-                # self.header.search_text_changed.connect(self.dashboard_screen.filter_items)
-
+                
             elif title == "Live Feed":
                 self.header.set_search_box_visibility(True)
                 self.header.set_search_placeholder("Search cameras...")
-                # Connect search to camera filter
-                self.header.search_text_changed.connect(self.live_feed_screen.filter_cameras)
+                # Connect search to camera filter only if method exists
+                if hasattr(self.live_feed_screen, 'filter_cameras'):
+                    self.header.search_text_changed.connect(self.live_feed_screen.filter_cameras)
 
             elif title == "Alerts":
-                # Show the search box and change the placeholder
                 self.header.set_search_box_visibility(True)
                 self.header.set_search_placeholder("Search alerts…")
-
-                # Disconnect old connections and connect to the filter
-                try: self.header.search_text_changed.disconnect()
-                except: pass
-                self.header.search_text_changed.connect(self.alerts_screen.filter_alerts)
-
-                # No action button here
+                # Connect to alerts filter if it exists
+                if hasattr(self.alerts_screen, 'filter_alerts'):
+                    self.header.search_text_changed.connect(self.alerts_screen.filter_alerts)
                 self.header.set_action_button("", False)
 
             elif title == "User Management":
                 self.header.set_search_box_visibility(True)
                 self.header.set_search_placeholder("Search users...")
-                # "Add User" button
                 self.header.set_action_button("Add User", visible=True)
-                self.header.action_button_clicked.connect(
-                    self.user_management_screen.on_add_user_clicked
-                )
-                # Search filter for users
-                self.header.search_text_changed.connect(self.user_management_screen.filter_users)
+                if hasattr(self.user_management_screen, 'on_add_user_clicked'):
+                    self.header.action_button_clicked.connect(self.user_management_screen.on_add_user_clicked)
+                if hasattr(self.user_management_screen, 'filter_users'):
+                    self.header.search_text_changed.connect(self.user_management_screen.filter_users)
 
             elif title == "Settings":
                 self.header.set_search_box_visibility(False)
                 self.header.set_action_button("", visible=False)
 
             else:
-                # Future screens
                 self.header.set_search_box_visibility(True)
                 self.header.set_search_placeholder(f"Search {title.lower()}…")
-                # No default action button
+                
         except Exception as e:
             logger.error(f"Error during screen switch: {str(e)}")
-            import traceback
             logger.error(traceback.format_exc())
 
     def initialize_screens(self, user_data):
         """Initialize different screens for the application"""
         try:
-            db_session = get_session()
-            self.dashboard_screen = DashboardScreen(user_data=user_data)
-            self.live_feed_screen = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node, ros_bridge=self.ros_bridge)
-            self.alerts_screen = AlertsScreen(user_data=user_data, ros_node=self.ros_node)
-            self.user_management_screen = UserManagementScreen(user_data=user_data, db_session=db_session)
-            self.playback_screen = PlaybackScreen(user_data=user_data, ros_node=self.ros_node)
-            self.settings_screen = SettingsScreen(user=user_data, db_session=db_session)
+            # Initialize each screen with error handling and its own session
+            try:
+                self.dashboard_screen = DashboardScreen(user_data=user_data)
+                logger.info("Dashboard screen initialized")
+            except Exception as e:
+                logger.error(f"Error initializing dashboard: {e}")
+                self.dashboard_screen = None
+            
+            try:
+                self.live_feed_screen = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node, ros_bridge=self.ros_bridge)
+                logger.info("Live feed screen initialized")
+            except Exception as e:
+                logger.error(f"Error initializing live feed: {e}")
+                self.live_feed_screen = None
+            
+            try:
+                self.alerts_screen = AlertsScreen(user_data=user_data, ros_node=self.ros_node)
+                logger.info("Alerts screen initialized")
+            except Exception as e:
+                logger.error(f"Error initializing alerts: {e}")
+                self.alerts_screen = None
+            
+            try:
+                # Create a new session for user management
+                user_mgmt_session = create_new_session()
+                self.user_management_screen = UserManagementScreen(user_data=user_data, db_session=user_mgmt_session)
+                logger.info("User management screen initialized")
+            except Exception as e:
+                logger.error(f"Error initializing user management: {e}")
+                self.user_management_screen = None
+            
+            try:
+                self.playback_screen = PlaybackScreen(user_data=user_data, ros_node=self.ros_node)
+                logger.info("Playback screen initialized")
+            except Exception as e:
+                logger.error(f"Error initializing playback: {e}")
+                self.playback_screen = None
+            
+            try:
+                # Create a new session for settings
+                settings_session = create_new_session()
+                self.settings_screen = SettingsScreen(user=user_data, db_session=settings_session)
+                logger.info("Settings screen initialized")
+            except Exception as e:
+                logger.error(f"Error initializing settings: {e}")
+                # Create a simple fallback settings screen
+                self.settings_screen = None
 
-            # Connect LiveFeedScreen camera signals to DashboardScreen
-            self.live_feed_screen.frame_updated.connect(self.dashboard_screen.update_camera_feed)
-            self.live_feed_screen.feed_stopped.connect(self.dashboard_screen.camera_feed_stopped)
+            # Connect signals only if screens are initialized
+            if self.live_feed_screen and self.dashboard_screen:
+                self.live_feed_screen.frame_updated.connect(self.dashboard_screen.update_camera_feed)
+                self.live_feed_screen.feed_stopped.connect(self.dashboard_screen.camera_feed_stopped)
             
-            # Connect DashboardScreen signals to LiveFeedScreen navigation
-            self.dashboard_screen.navigate_to_live_feed.connect(self.handle_live_feed_navigation)
+            if self.dashboard_screen and self.live_feed_screen:
+                self.dashboard_screen.navigate_to_live_feed.connect(self.handle_live_feed_navigation)
+                
+            # Connect signals between settings and live feed
+            if self.settings_screen and self.live_feed_screen:
+                self.settings_screen.camera_approved_signal.connect(self.live_feed_screen.refresh_cameras_from_database)
+                logger.info("Connected camera approval signal from settings to live feed")
             
-            # Connecter les signaux du watchdog aux écrans
+            # Connect watchdog signals to screens
             if hasattr(self, 'ros_watchdog'):
                 self.ros_watchdog.cameras_status_changed.connect(self.on_cameras_status_changed)
                 self.ros_watchdog.ros_status_changed.connect(self.on_ros_status_changed)
-
-            # Add screens to the stacked widget
-            self.stacked_widget.addWidget(self.dashboard_screen)
-            self.stacked_widget.addWidget(self.live_feed_screen)
-            self.stacked_widget.addWidget(self.alerts_screen)
-            self.stacked_widget.addWidget(self.user_management_screen)
-            self.stacked_widget.addWidget(self.playback_screen)
-            self.stacked_widget.addWidget(self.settings_screen)
-            
-            # Ajouter un mécanisme de préparation et nettoyage des écrans
+                
+            # Add screens to the stacked widget only if they exist
+            if self.dashboard_screen:
+                self.stacked_widget.addWidget(self.dashboard_screen)
+            if self.live_feed_screen:
+                self.stacked_widget.addWidget(self.live_feed_screen)
+            if self.alerts_screen:
+                self.stacked_widget.addWidget(self.alerts_screen)
+            if self.user_management_screen:
+                self.stacked_widget.addWidget(self.user_management_screen)
+            if self.playback_screen:
+                self.stacked_widget.addWidget(self.playback_screen)
+            if self.settings_screen:
+                self.stacked_widget.addWidget(self.settings_screen)
+                
+            # Add mechanism for preparing and cleaning screens
             self.stacked_widget.currentChanged.connect(self.on_screen_changed)
+            logger.info(f"Screens initialized: {self.stacked_widget.count()} screens added to stack")
             
         except Exception as e:
             logger.error(f"Error initializing screens: {e}")
-            import traceback
             logger.error(traceback.format_exc())
 
     def on_screen_changed(self, index):
         """
-        Appelé quand l'écran actif change pour préparer le nouvel écran
-        et nettoyer l'ancien
+        Called when the active screen changes to prepare the new screen
+        and clean up the old one
         """
         try:
             current_widget = self.stacked_widget.widget(index)
-            
-            # Préparer le nouvel écran si nécessaire
+            # Prepare the new screen if needed
             if hasattr(current_widget, 'prepare_screen'):
                 current_widget.prepare_screen()
                 
-            # Pour tous les autres écrans, appeler cleanup si disponible
+            # For all other screens, call cleanup if available
             for i in range(self.stacked_widget.count()):
                 if i != index:
                     widget = self.stacked_widget.widget(i)
@@ -327,35 +432,38 @@ class MainWindow(QMainWindow):
                         widget.cleanup()
         except Exception as e:
             logger.error(f"Error in screen transition: {e}")
-
-    def on_cameras_status_changed(self, camera_ids):
-        """Gérer le changement d'état des caméras signalé par le watchdog"""
-        logger.info(f"État des caméras modifié pour IDs: {camera_ids}")
-        
-        # Mettre à jour les écrans Dashboard et LiveFeed
-        if hasattr(self, 'dashboard_screen'):
-            self.dashboard_screen.refresh_cameras()
             
-        if hasattr(self, 'live_feed_screen'):
-            self.live_feed_screen.refresh_cameras()
-    
-    def on_ros_status_changed(self, connected):
-        """Gérer le changement d'état global de ROS"""
-        status_msg = "connecté" if connected else "déconnecté"
-        logger.warning(f"Le système ROS est maintenant {status_msg}")
+    def on_cameras_status_changed(self, camera_ids):
+        """Handle camera status changes reported by the watchdog"""
+        logger.info(f"Camera status changed for IDs: {camera_ids}")
         
-        # Afficher un message à l'utilisateur si ROS est déconnecté
+        # Update Dashboard and LiveFeed screens
+        if hasattr(self, 'dashboard_screen') and hasattr(self.dashboard_screen, 'refresh_cameras'):
+            self.dashboard_screen.refresh_cameras()
+        
+        if hasattr(self, 'live_feed_screen') and hasattr(self.live_feed_screen, 'refresh_cameras'):
+            self.live_feed_screen.refresh_cameras()
+            
+    def on_ros_status_changed(self, connected):
+        """Handle global ROS status changes"""
+        status_msg = "connected" if connected else "disconnected"
+        logger.warning(f"ROS system is now {status_msg}")
+        
+        # Show message to user if ROS is disconnected
         if not connected:
             QMessageBox.warning(
                 self, 
-                "Système ROS déconnecté", 
-                "La connexion au système ROS a été perdue. Les flux vidéo et détections ne sont plus disponibles."
+                "ROS System Disconnected", 
+                "Connection to ROS system has been lost. Video feeds and detections are no longer available."
             )
         else:
-            # ROS s'est reconnecté
-            if hasattr(self, 'header'):
-                self.header.show_notification("Système ROS reconnecté", "success")
-
+            # ROS reconnected - show a simple info message
+            QMessageBox.information(
+                self,
+                "ROS System Reconnected", 
+                "ROS system is now reconnected. Video feeds and detections are available again."
+            )
+            
     def handle_live_feed_navigation(self, camera_id):
         """Handle navigation to the live feed screen for a specific camera."""
         logger.info(f"Switching to Live Feed screen for camera ID: {camera_id}")
@@ -376,11 +484,9 @@ class MainWindow(QMainWindow):
             
             # Switch view to Live Feed
             self.switch_view("Live Feed", self.live_feed_screen)
-            
             logger.info(f"Successfully navigated to Live Feed for camera ID: {camera_id}")
         except Exception as e:
             logger.error(f"Error navigating to Live Feed: {str(e)}")
-            import traceback
             logger.error(traceback.format_exc())
 
     def handle_logout(self):
@@ -388,7 +494,70 @@ class MainWindow(QMainWindow):
         logger.info("User logged out")
         QMessageBox.information(self, "Logout", "You have been logged out.")
         self.reset_to_login_screen()
+        
+    def on_new_camera_detected(self, camera_id, camera_name, camera_ip):
+        """Handle a new camera detection"""
+        logger.info(f"New camera detected: {camera_name} ({camera_ip})")
+        # Show notification
+        try:
+            if hasattr(self, 'notification_manager'):
+                # Get pending count
+                pending_count = pending_camera_manager.get_pending_count()
+                self.notification_manager.show_camera_notification(camera_name, camera_ip, pending_count)
+        except Exception as e:
+            logger.error(f"Error showing camera notification: {e}")
 
+    def show_settings_pending_cameras(self):
+        """Navigate to settings screen and show pending cameras section"""
+        try:
+            # Switch to settings screen
+            self.switch_view("Settings", self.settings_screen)
+            logger.info("Navigated to settings screen for pending camera approval")
+        except Exception as e:
+            logger.error(f"Error navigating to settings: {e}")
+
+    def on_camera_approved(self, approved_camera):
+        """
+        Handle camera approval
+        Automatically reload the Live Feed to include the new camera
+        """
+        print(f"[MainWindow] Caméra approuvée: {approved_camera.name}")
+        
+        # Reload the Live Feed to include the new camera
+        if hasattr(self, 'live_feed_screen') and self.live_feed_screen:
+            try:
+                # Reload cameras from the database
+                self.live_feed_screen.refresh_cameras_from_database()
+                print(f"[MainWindow] Live Feed rechargé avec la nouvelle caméra: {approved_camera.name}")
+            except Exception as e:
+                print(f"[MainWindow] Erreur lors du rechargement du Live Feed: {e}")
+                traceback.print_exc()
+        
+        # Reload the Dashboard if needed
+        if hasattr(self, 'dashboard_screen') and self.dashboard_screen:
+            try:
+                # The Dashboard may also display cameras
+                # Add reload method if needed
+                print(f"[MainWindow] Dashboard notifié de la nouvelle caméra: {approved_camera.name}")
+            except Exception as e:
+                print(f"[MainWindow] Erreur lors de la notification du Dashboard: {e}")
+        
+        # Show a success notification
+        if hasattr(self, 'notification_manager'):
+            # Show a specific notification for approval
+            self.notification_manager.show_approval_notification(approved_camera.name)
+            print(f"[MainWindow] 🎉 Caméra {approved_camera.name} ajoutée au système avec succès!")
+            print(f"[MainWindow] 📹 La caméra est maintenant disponible dans le Live Feed")
+            print(f"[MainWindow] 🔧 Vous pouvez la voir dans l'écran de surveillance en temps réel")
+    
+    def on_camera_rejected(self, camera_id: str):
+        """
+        Handle camera rejection
+        """
+        print(f"[MainWindow] Caméra rejetée: {camera_id}")
+        # You could add additional logic here
+        # such as notification or logging
+        
     def reset_to_login_screen(self):
         """Reset the application to the login screen."""
         # Clean up main interface
@@ -452,7 +621,7 @@ def main():
             }
             """)
         logger.info(f"Created default style file at {style_path}")
-    
+        
     setup_fonts()
     
     window = MainWindow(ros_node)
@@ -462,9 +631,9 @@ def main():
     timer = QTimer()
     timer.timeout.connect(lambda: rclpy.spin_once(ros_node, timeout_sec=0.0))
     timer.start(10)
-
+    
     exit_code = app.exec_()
-
+    
     # Clean shutdown
     rclpy.shutdown()
     sys.exit(exit_code)
