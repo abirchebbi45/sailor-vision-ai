@@ -54,12 +54,13 @@ class Camera(Base):
     name = Column(String(100), nullable=False)
     ip_address = Column(String(50))
     port = Column(Integer)
-    location = Column(String(100), nullable=True)  # Ensure location is nullable
+    location = Column(String(100))
     rtsp_url = Column(String(256))
     is_active = Column(Boolean, default=True)
     is_recording = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
     last_online = Column(DateTime)
+    camera_type = Column(String(50))  # e.g., "IP Camera", "Analog Camera"
     
     # Relationships
     recordings = relationship("Recording", back_populates="camera")
