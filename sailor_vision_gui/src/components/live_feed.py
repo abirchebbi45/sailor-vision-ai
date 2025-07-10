@@ -11,7 +11,9 @@ import cv2
 from time import time
 
 from src.services.camera_service import CameraService
-from database import get_session
+from src.services.pending_camera_manager import pending_camera_manager
+from src.services.camera_detector import camera_detector  # Import the new camera detector service
+from database import get_session, create_new_session
 
 import logging
 import json
@@ -358,117 +360,234 @@ class LiveFeedScreen(QWidget):
     def __init__(self, user_data=None, ros_node=None, ros_bridge=None):
         super().__init__()
         self.user_data = user_data
-        self.db_session = get_session()  # Initialize database session
-        self.camera_service = CameraService(self.db_session)  # CameraService instance
-        self.cameras = [camera_to_dict(cam) for cam in self.camera_service.get_all_cameras()]
-        self.filtered_cameras = self.cameras  # Ajouté: liste filtrée
+        
+        # Initialize database session with error handling
+        try:
+            self.db_session = create_new_session()
+            self.camera_service = CameraService(self.db_session)
+        except Exception as e:
+            logger.error(f"Failed to initialize database session: {e}")
+            self.db_session = None
+            self.camera_service = None
+            
+        # Initialize cameras list with validation - LOAD ALL APPROVED CAMERAS
+        try:
+            if self.camera_service:
+                all_cameras = self.camera_service.get_all_cameras()
+                # Changed: Load ALL cameras, not just active ones for Live Feed display
+                self.cameras = [camera_to_dict(cam) for cam in all_cameras if cam and hasattr(cam, 'id')]
+            else:
+                self.cameras = []
+        except Exception as e:
+            logger.error(f"Failed to load cameras: {e}")
+            self.cameras = []
+            
+        self.filtered_cameras = self.cameras
         self.camera_widgets = {}
         self.expanded_camera_widget = None
         self.ros_node = ros_node
-        self.detected_cameras = set()  # Track detected camera device paths
-        self.ros_camera_sub = None
         self.topic_to_camera_id = {}  # Map ROS topic to camera.id
         
         self.init_ui()
 
         # Use provided ROSImageBridge or create a new one
-        self.ros_bridge = ros_bridge or ROSImageBridge(ros_node)
-        
-        # --- Subscribe to all /yolo/*/image_raw topics dynamically ---
-        self.ros_bridge.image_received.connect(self.update_cam_a_feed, Qt.QueuedConnection)
-        if ros_node:
-            self.ros_bridge.subscribe_to_yolo_topics(self.handle_new_yolo_topic)
+        try:
+            self.ros_bridge = ros_bridge or ROSImageBridge(ros_node)
+            
+            # Connect to the ROS bridge for image updates - FIXED SIGNAL NAME
+            self.ros_bridge.image_received.connect(self.on_ros_image_received, Qt.QueuedConnection)
+            
+            # Subscribe to YOLO topics for camera feeds
+            if ros_node:
+                self.ros_bridge.subscribe_to_yolo_topics(self.handle_new_yolo_topic)
+                
+            # Initialize the camera detector with our ROS node
+            if ros_node and camera_detector:
+                # Ensure the camera detector has our ROS node
+                camera_detector.ros_node = ros_node
+                camera_detector.setup_ros_subscription()
+                
+        except Exception as e:
+            logger.error(f"Failed to initialize ROS bridge: {e}")
+            self.ros_bridge = None
 
-        # Subscribe to /camera/list for auto-detection
-        if ros_node:
-            self.ros_camera_sub = ros_node.create_subscription(
-                ROSString, '/camera/list', self.handle_camera_list, 10
-            )
-    
-    def handle_camera_list(self, msg):
+    def on_ros_image_received(self, cv_image, topic):
         """
-        Callback for /camera/list topic. Shows popup for new cameras.
+        Handle image received from ROS bridge
+        Convert to pixmap and update corresponding camera feed
         """
         try:
-            data = json.loads(msg.data)
-            devices = data.get('cameras', [])
-            new_devices = []
-            for dev in devices:
-                # Check if device is already in DB (by ip_address)
-                already_in_db = any(
-                    (cam.get("ip_address") or "").strip() == dev.strip()
-                    for cam in self.cameras
-                )
-                if not already_in_db and dev not in self.detected_cameras:
-                    new_devices.append(dev)
-            if not new_devices:
-                return
-            for dev in new_devices:
-                self.detected_cameras.add(dev)
-                self.show_camera_approval_dialog(dev)
+            # Convert CV image to QPixmap
+            height, width, channel = cv_image.shape
+            bytes_per_line = 3 * width
+            
+            from PyQt5.QtGui import QImage, QPixmap
+            q_image = QImage(cv_image.data, width, height, bytes_per_line, QImage.Format_RGB888).rgbSwapped()
+            pixmap = QPixmap.fromImage(q_image)
+            
+            # Find camera ID for this topic
+            camera_id = self.topic_to_camera_id.get(topic)
+            if camera_id:
+                # Update camera feed
+                success = self.update_camera_feed(camera_id, pixmap)
+                if success:
+                    logger.debug(f"[LiveFeed] Updated camera {camera_id} from topic {topic}")
+                else:
+                    logger.warning(f"[LiveFeed] Failed to update camera {camera_id} from topic {topic}")
+            else:
+                logger.debug(f"[LiveFeed] No camera mapping found for topic {topic}")
+                
         except Exception as e:
-            logger.error(f"Error handling camera list: {e}")
+            logger.error(f"[LiveFeed] Error processing ROS image from {topic}: {e}")
 
-    def show_camera_approval_dialog(self, device_path):
-        """
-        Show a popup to approve a newly detected camera.
-        """
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("New Camera Detected")
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel(f"Detected camera device: <b>{device_path}</b>"))
-        layout.addWidget(QLabel("Approve and add this camera to the system?"))
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        layout.addWidget(buttons)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        if dialog.exec_() == QDialog.Accepted:
-            # Add camera to DB
-            try:
-                cam_name = f"AutoCam {device_path.split('/')[-1]}"
-                new_cam = self.camera_service.add_camera({
-                    "name": cam_name,
-                    "ip_address": device_path,
-                    "port": None,
-                    "location": "Auto-detected",
-                    "rtsp_url": "",  # Could be filled if needed
-                    "is_active": True
-                })
-                cam_dict = camera_to_dict(new_cam)
-                self.cameras.append(cam_dict)
+    def filter_cameras(self, search_text):
+        """Filter cameras based on search text"""
+        try:
+            if not search_text:
                 self.filtered_cameras = self.cameras
-                self.load_cameras()
-                # Map topic to camera id for feed routing
-                topic = f"/camera/{device_path.split('/')[-1]}/image_raw"
-                self.topic_to_camera_id[topic] = cam_dict["id"]
-                logger.info(f"Camera {cam_name} added and mapped to topic {topic}")
-            except Exception as e:
-                logger.error(f"Failed to add auto camera: {e}")
+            else:
+                search_text = search_text.lower()
+                self.filtered_cameras = [
+                    camera for camera in self.cameras
+                    if search_text in camera.get('name', '').lower() or
+                       search_text in camera.get('location', '').lower() or
+                       search_text in camera.get('ip_address', '').lower()
+                ]
+            
+            # Reload the display with filtered cameras
+            self.load_cameras(self.filtered_cameras)
+            logger.info(f"[LiveFeed] Filtered cameras: {len(self.filtered_cameras)}/{len(self.cameras)}")
+            
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error filtering cameras: {e}")
+
+    def refresh_cameras(self):
+        """Refresh cameras from database (for external calls)"""
+        try:
+            logger.info("[LiveFeed] External refresh_cameras called")
+            self.reload_cameras_from_database()
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error in refresh_cameras: {e}")
+
+    def set_active_camera(self, camera_id):
+        """Set a specific camera as active/highlighted"""
+        try:
+            logger.info(f"[LiveFeed] Setting active camera: {camera_id}")
+            # Find the camera and highlight it
+            for cam in self.cameras:
+                if cam.get('id') == camera_id:
+                    logger.info(f"[LiveFeed] Found camera to highlight: {cam.get('name')}")
+                    # You could add highlighting logic here
+                    break
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error setting active camera: {e}")
+
+    def highlight_approved_camera(self, camera_id):
+        """Highlight a newly approved camera"""
+        try:
+            logger.info(f"[LiveFeed] Highlighting approved camera: {camera_id}")
+            if camera_id in self.camera_widgets:
+                widget = self.camera_widgets[camera_id]
+                # Add visual highlight effect
+                widget.setStyleSheet(widget.styleSheet() + """
+                    #liveFeedWidget {
+                        border: 3px solid #4CAF50;
+                        animation: pulse 2s;
+                    }
+                """)
+                
+                # Remove highlight after 3 seconds
+                QTimer.singleShot(3000, lambda: self.remove_highlight(camera_id))
+                
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error highlighting camera: {e}")
+
+    def remove_highlight(self, camera_id):
+        """Remove highlight from camera"""
+        try:
+            if camera_id in self.camera_widgets:
+                widget = self.camera_widgets[camera_id]
+                # Reset stylesheet to original
+                widget.setStyleSheet("""
+                    #liveFeedWidget {
+                        background-color: white;
+                        border-radius: 8px;
+                        margin: 5px;
+                    }
+                    #feedContainer {
+                        position: relative;
+                        border-radius: 8px;
+                    }
+                    #cameraFeed {
+                        border-radius: 8px;
+                    }
+                """)
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error removing highlight: {e}")
 
     def handle_new_yolo_topic(self, topic):
         """
         Called when a new /yolo/<videoX>/image_raw topic is detected.
-        Map it to the correct camera_id.
+        Map it to the correct camera_id based on exact device match.
         """
         try:
-            video_name = topic.split('/')[2].lower()  # e.g. video13
-            found = False
+            logger.info(f"[LiveFeed] Handling new YOLO topic: {topic}")
+            
+            # Extract video device number from topic: /yolo/video1/image_raw -> "1"
+            topic_parts = topic.split('/')
+            if len(topic_parts) < 3:
+                logger.error(f"Invalid topic format: {topic}")
+                return
+                
+            video_name = topic_parts[2].lower()  # e.g. video1, video10, video13
+            if not video_name.startswith("video"):
+                logger.error(f"Invalid video topic format: {topic}")
+                return
+                
+            topic_num = video_name.replace("video", "")  # Extract number part
+            logger.info(f"[LiveFeed] Extracted device number from topic: {topic_num}")
+            
+            # Map to ALL cameras (not just active ones) that match device
             for cam in self.cameras:
-                # Compare video_name with ip_address (e.g. /dev/video13)
                 ip_addr = (cam.get("ip_address") or "").lower()
                 cam_name = (cam.get("name") or "").lower()
-                # Accept match if video_name in ip_address or in cam_name (ignore spaces)
-                if video_name in ip_addr.replace("/dev/", "") or video_name in cam_name.replace(" ", ""):
+                
+                logger.debug(f"[LiveFeed] Checking camera: {cam_name} with IP: {ip_addr}")
+                
+                # Extract video device number from ip_address for exact matching
+                if "/dev/video" in ip_addr:
+                    device_num = ip_addr.replace("/dev/video", "")
+                    logger.debug(f"[LiveFeed] Camera device number: {device_num}, topic number: {topic_num}")
+                    
+                    # Exact match only - ensure topic_num matches device_num exactly
+                    if device_num == topic_num:
+                        # Check if this topic is already mapped
+                        if topic in self.topic_to_camera_id:
+                            logger.debug(f"Topic {topic} already mapped to camera {self.topic_to_camera_id[topic]}")
+                            return
+                        
+                        self.topic_to_camera_id[topic] = cam["id"]
+                        logger.info(f"✅ Mapped YOLO topic {topic} to camera '{cam.get('name')}' (id={cam['id']}, device=/dev/video{device_num})")
+                        return
+                
+                # Fallback: check AutoCam names with exact video number match
+                elif "autocam" in cam_name and f"video{topic_num}" in cam_name:
+                    # Check if this topic is already mapped
+                    if topic in self.topic_to_camera_id:
+                        logger.debug(f"Topic {topic} already mapped to camera {self.topic_to_camera_id[topic]}")
+                        return
+                    
                     self.topic_to_camera_id[topic] = cam["id"]
-                    logger.info(f"Mapped YOLO topic {topic} to camera '{cam.get('name')}' (id={cam['id']})")
-                    found = True
-                    break
-            if not found:
-                logger.warning(f"No camera found for YOLO topic {topic} (video_name={video_name})")
+                    logger.info(f"✅ Mapped YOLO topic {topic} to camera '{cam.get('name')}' (id={cam['id']}) via name matching")
+                    return
+            
+            # If no mapping found, log warning
+            logger.warning(f"❌ No camera found for YOLO topic {topic} (device number: {topic_num})")
+            
         except Exception as e:
-            logger.error(f"Error mapping yolo topic {topic}: {e}")
+            logger.error(f"Error handling YOLO topic {topic}: {e}")
+            import traceback
+            traceback.print_exc()
 
     def init_ui(self):
         self.main_layout = QVBoxLayout(self)
@@ -557,356 +676,268 @@ class LiveFeedScreen(QWidget):
         Charge et affiche les caméras dans la grille.
         Si cameras est None, utilise self.filtered_cameras.
         """
-        for i in reversed(range(self.cameras_grid.count())):
-            item = self.cameras_grid.itemAt(i)
-            if item.widget():
-                item.widget().deleteLater()
-
-        if cameras is None:
-            cameras = self.filtered_cameras
-
-        self.camera_widgets = {}  # Réinitialiser les widgets
-
-        for i, camera in enumerate(cameras):
-            row = i // 2
-            col = i % 2
-            camera_feed = CameraFeedWidget(camera)
-            camera_feed.expand_clicked.connect(self.expand_camera)
-            self.cameras_grid.addWidget(camera_feed, row, col)
-
-            self.camera_widgets[camera["id"]] = camera_feed
-
-    def filter_cameras(self, text):
-        """
-        Filtre les caméras selon le texte (nom ou localisation).
-        """
-        text = text.strip().lower()
-        if not text:
-            self.filtered_cameras = self.cameras
-        else:
-            self.filtered_cameras = [
-                cam for cam in self.cameras
-                if text in (cam.get("name") or '').lower() or text in (cam.get("location") or '').lower()
-            ]
-        self.load_cameras(self.filtered_cameras)
-
-    def expand_camera(self, camera_id):
         try:
-            logger.info(f"Attempting to expand camera ID: {camera_id}")
-            
-            camera_data = next((cam for cam in self.cameras if cam["id"] == camera_id), None)
-            if not camera_data:
-                logger.warning(f"Camera with ID {camera_id} not found")
-                return
+            # Clear existing widgets safely
+            for i in reversed(range(self.cameras_grid.count())):
+                item = self.cameras_grid.itemAt(i)
+                if item and item.widget():
+                    widget = item.widget()
+                    widget.deleteLater()
+                    self.cameras_grid.removeItem(item)
 
-            camera_widget = self.camera_widgets.get(camera_id)
-            if not camera_widget:
-                logger.warning(f"Camera widget for ID {camera_id} not found")
-                return
+            if cameras is None:
+                cameras = self.filtered_cameras
 
-            pixmap = None
-            if hasattr(camera_widget, 'feed_label') and hasattr(camera_widget.feed_label, 'pixmap') and camera_widget.feed_label.pixmap():
-                original_pixmap = camera_widget.feed_label.pixmap()
-                pixmap = QPixmap(original_pixmap)
+            self.camera_widgets = {}  # Clear widgets dict
 
-            self.ensure_camera_streaming(camera_id)
-            
-            if hasattr(self, 'expanded_camera_widget') and self.expanded_camera_widget:
-                self.expanded_camera_widget.close()
-                self.expanded_camera_widget.deleteLater()
-                self.expanded_camera_widget = None
-                
-            self.expanded_camera_widget = ExpandedCameraWidget({
-                "id": camera_data["id"],
-                "name": camera_data["name"],
-                "location": camera_data["location"],
-                "connected": camera_data.get("is_active", False),
-                "image_path": camera_data.get("image_path", "")
-            }, pixmap)
-            
-            self.expanded_camera_widget.camera_id = camera_id
-            
-            self.expanded_camera_widget.close_clicked.connect(self.close_expanded_camera)
-
-            self.main_layout.addWidget(self.expanded_camera_widget)
-
-            self.content_widget.setVisible(False)
-            
-            if hasattr(self, 'ros_bridge') and self.ros_bridge:
-                try:
-                    self.ros_bridge.image_received.disconnect(self.update_expanded_cam_feed)
-                except:
-                    pass
-                
-                self.ros_bridge.image_received.connect(self.update_expanded_cam_feed, Qt.QueuedConnection)
-                logger.info(f"Connected image_received signal to expanded view for camera {camera_id}")
-
-            logger.info(f"Camera {camera_data['name']} expanded successfully")
-        except Exception as e:
-            logger.error(f"Error expanding camera: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
-
-    def close_expanded_camera(self):
-        if self.expanded_camera_widget:
-            try:
-                self.ros_bridge.image_received.disconnect(self.update_expanded_cam_feed)
-            except:
-                pass
-            
-            self.expanded_camera_widget.deleteLater()
-            self.expanded_camera_widget = None
-            
-            self.content_widget.setVisible(True)
-            
-            logger.info("Expanded view closed")
-
-    def update_expanded_cam_feed(self, cv_image):
-        if self.expanded_camera_widget is None or not hasattr(self.expanded_camera_widget, 'feed_container'):
-            return
-            
-        try:
-            height, width, channel = cv_image.shape
-            bytes_per_line = 3 * width
-            
-            rgb_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-            
-            q_image = QImage(rgb_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
-            
-            pixmap = QPixmap.fromImage(q_image)
-            
-            QMetaObject.invokeMethod(
-                self.expanded_camera_widget,
-                "update_feed",
-                Qt.QueuedConnection,
-                Q_ARG(QPixmap, pixmap)
-            )
-            
-            if hasattr(self.expanded_camera_widget, 'camera_id'):
-                camera_id = self.expanded_camera_widget.camera_id
-                if camera_id in self.camera_widgets:
-                    QMetaObject.invokeMethod(
-                        self.camera_widgets[camera_id],
-                        "update_feed",
-                        Qt.QueuedConnection,
-                        Q_ARG(QPixmap, pixmap)
-                    )
-            
-        except Exception as e:
-            logger.error(f"Error updating expanded feed: {str(e)}")
-
-    def ensure_camera_streaming(self, camera_id):
-        try:
-            if hasattr(self, 'ros_bridge') and self.ros_bridge:
-                if hasattr(self.ros_bridge, 'restart_camera_feed'):
-                    self.ros_bridge.restart_camera_feed(camera_id)
+            # Only add cameras that have valid data
+            valid_cameras = []
+            for camera in cameras:
+                if isinstance(camera, dict) and camera.get("id") and camera.get("name"):
+                    valid_cameras.append(camera)
                 else:
-                    logger.info(f"Ensuring camera {camera_id} is streaming")
-                    if hasattr(self.ros_bridge, 'start_camera'):
-                        self.ros_bridge.start_camera(camera_id)
-            
-            logger.info(f"Camera {camera_id} streaming ensured")
-        except Exception as e:
-            logger.error(f"Error ensuring camera streaming: {str(e)}")
+                    logger.warning(f"Invalid camera data: {camera}")
 
-    def set_active_camera(self, camera_id):
-        try:
-            logger.info(f"Setting active camera to ID: {camera_id}")
-            self.active_camera_id = camera_id
-            
-            camera_data = next((cam for cam in self.cameras if cam["id"] == camera_id), None)
-            if not camera_data:
-                logger.warning(f"Camera with ID {camera_id} not found")
-                return
-            
-            logger.info(f"Found camera: {camera_data['name']}")
-            
-            if not camera_data.get("is_active", False):
+            for i, camera in enumerate(valid_cameras):
+                row = i // 2
+                col = i % 2
                 try:
-                    self.camera_service.set_camera_active(camera_id, True)
-                    camera_data["is_active"] = True
-                    logger.info(f"Activated camera {camera_id}")
+                    camera_feed = CameraFeedWidget(camera)
+                    camera_feed.expand_clicked.connect(self.expand_camera)
+                    self.cameras_grid.addWidget(camera_feed, row, col)
+                    self.camera_widgets[camera["id"]] = camera_feed
                 except Exception as e:
-                    logger.error(f"Failed to activate camera: {str(e)}")
+                    logger.error(f"Error creating camera widget for {camera.get('name')}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error loading cameras: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def reload_cameras_from_database(self):
+        """
+        Reload cameras from database and update internal camera list
+        """
+        try:
+            logger.info("[LiveFeed] Reloading cameras from database...")
             
-            self.ensure_camera_streaming(camera_id)
+            # Reload cameras from database
+            if self.camera_service:
+                all_cameras = self.camera_service.get_all_cameras()
+                # FIXED: Load ALL approved cameras, not just active ones
+                self.cameras = [camera_to_dict(cam) for cam in all_cameras if cam and hasattr(cam, 'id')]
+                self.filtered_cameras = self.cameras
+                logger.info(f"[LiveFeed] Loaded {len(self.cameras)} cameras from database (all approved)")
+                
+                # Force refresh the approved cameras list in camera detector
+                if camera_detector:
+                    camera_detector.refresh_approved_cameras()
+                    logger.info("[LiveFeed] Refreshed camera detector's approved cameras list")
+                
+                # Clean up invalid topic mappings
+                self.clean_topic_mappings()
+                
+                # Force remapping of YOLO topics for newly approved cameras
+                self.force_topic_remapping()
+                
+                # Reload the camera widgets
+                self.load_cameras()
+                
+                logger.info("[LiveFeed] Camera reload completed successfully")
+            else:
+                logger.error("[LiveFeed] Camera service not available")
+                
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error reloading cameras from database: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def refresh_cameras_from_database(self, approved_camera_dict=None):
+        """
+        Rafraîchir les caméras depuis la base de données après l'approbation d'une nouvelle caméra.
+        Cette méthode est appelée via le signal camera_approved_signal.
+        """
+        try:
+            if approved_camera_dict:
+                logger.info(f"[LiveFeed] Nouvelle caméra approuvée: {approved_camera_dict}")
+            else:
+                logger.info("[LiveFeed] Rafraîchissement des caméras depuis la base de données")
             
-            self.highlight_camera(camera_id)
+            # Use the new reload method
+            self.reload_cameras_from_database()
+            
+            # Si une caméra spécifique a été approuvée, la mettre en évidence
+            if approved_camera_dict and approved_camera_dict.get("id"):
+                camera_id = approved_camera_dict["id"]
+                logger.info(f"[LiveFeed] Mise en évidence de la caméra approuvée: {camera_id}")
+                
+                # Attendre un peu pour que l'UI se mette à jour
+                QTimer.singleShot(500, lambda: self.highlight_approved_camera(camera_id))
             
         except Exception as e:
-            logger.error(f"Error setting active camera: {str(e)}")
+            logger.error(f"[LiveFeed] Erreur lors du rafraîchissement après approbation: {e}")
             import traceback
-            logger.error(traceback.format_exc())
+            traceback.print_exc()
 
-    def highlight_camera(self, camera_id):
+    def clean_topic_mappings(self):
+        """
+        Nettoie les mappings de topics pour les caméras qui ne sont plus approuvées
+        """
         try:
-            for cam_widget in self.camera_widgets.values():
-                cam_widget.setStyleSheet("""
-                    QFrame#liveFeedWidget {
-                        background-color: white;
-                        border-radius: 8px;
-                        margin: 5px;
-                    }
-                    QFrame#liveFeedWidget:hover {
-                        border: 1px solid #2196F3;
-                        background-color: #e3f2fd;
-                    }
-                """)
+            valid_camera_ids = {cam["id"] for cam in self.cameras}
+            invalid_topics = []
+            
+            for topic, camera_id in self.topic_to_camera_id.items():
+                if camera_id not in valid_camera_ids:
+                    invalid_topics.append(topic)
+            
+            for topic in invalid_topics:
+                camera_id = self.topic_to_camera_id[topic]
+                del self.topic_to_camera_id[topic]
+                logger.info(f"Removed invalid topic mapping: {topic} -> camera_id {camera_id}")
+            
+            logger.debug(f"Cleaned {len(invalid_topics)} invalid topic mappings")
+            
+        except Exception as e:
+            logger.error(f"Error cleaning topic mappings: {e}")
+
+    def force_yolo_topic_check(self):
+        """
+        Force une vérification immédiate des topics YOLO disponibles
+        Utilisé après l'approbation d'une nouvelle caméra
+        """
+        try:
+            if hasattr(self, 'ros_bridge') and self.ros_bridge:
+                logger.info("[LiveFeed] Forcing YOLO topic check after camera approval")
+                if hasattr(self.ros_bridge, 'force_topic_check'):
+                    self.ros_bridge.force_topic_check(self.handle_new_yolo_topic)
+                else:
+                    logger.warning("[LiveFeed] ROSImageBridge doesn't have force_topic_check method")
+            else:
+                logger.warning("[LiveFeed] No ROS bridge available for topic check")
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error forcing YOLO topic check: {e}")
+    
+    def force_topic_remapping(self):
+        """
+        Force le remapping des topics YOLO avec les caméras approuvées
+        """
+        try:
+            logger.info("[LiveFeed] Forçage du remapping des topics YOLO...")
+            
+            # Clear old mappings for non-existent cameras
+            self.clean_topic_mappings()
+            
+            # Check each camera and try to map its expected YOLO topic
+            for camera in self.cameras:
+                ip_address = camera.get('ip_address', '')
+                camera_id = camera.get('id')
+                camera_name = camera.get('name', 'Unknown')
+                
+                logger.info(f"[LiveFeed] Processing camera {camera_name} (ID: {camera_id}, IP: {ip_address})")
+                
+                if '/dev/video' in ip_address:
+                    device_num = ip_address.replace('/dev/video', '')
+                    expected_topic = f'/yolo/video{device_num}/image_raw'
+                    
+                    logger.info(f"[LiveFeed] Expected YOLO topic for camera {camera_id}: {expected_topic}")
+                    
+                    # Update the mapping regardless of current active status
+                    self.topic_to_camera_id[expected_topic] = camera_id
+                    logger.info(f"[LiveFeed] ✅ Mapped {expected_topic} to camera {camera_id} ({camera_name})")
+                        
+                elif 'autocam' in camera_name.lower() and 'video' in camera_name.lower():
+                    # Try to extract video number from camera name
+                    import re
+                    match = re.search(r'video(\d+)', camera_name.lower())
+                    if match:
+                        device_num = match.group(1)
+                        expected_topic = f'/yolo/video{device_num}/image_raw'
+                        
+                        # Update the mapping
+                        self.topic_to_camera_id[expected_topic] = camera_id
+                        logger.info(f"[LiveFeed] ✅ Mapped {expected_topic} to camera {camera_id} ({camera_name}) via name matching")
+            
+            # Force ROS bridge to check for these topics
+            if hasattr(self, 'ros_bridge') and self.ros_bridge:
+                self.ros_bridge.force_topic_check(self.handle_new_yolo_topic)
+                logger.info("[LiveFeed] Forced ROS bridge topic check")
+            
+            logger.info(f"[LiveFeed] Topic remapping completed. Current mappings: {self.topic_to_camera_id}")
+                            
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error forcing topic remapping: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def update_camera_feed(self, camera_id, pixmap):
+        """
+        Update a specific camera feed with new frame from ROS topic
+        """
+        try:
+            logger.debug(f"[LiveFeed] Updating camera {camera_id} with new frame")
             
             if camera_id in self.camera_widgets:
-                self.camera_widgets[camera_id].setStyleSheet("""
-                    QFrame#liveFeedWidget {
-                        background-color: #e3f2fd;
-                        border: 2px solid #2196F3;
-                        border-radius: 8px;
-                        margin: 5px;
-                    }
-                    QFrame#liveFeedWidget:hover {
-                        background-color: #bbdefb;
-                        border: 2px solid #1976D2;
-                    }
-                """)
-                logger.info(f"Highlighted camera with ID: {camera_id}")
-            
-            self.update()
-            
-        except Exception as e:
-            logger.error(f"Error highlighting camera: {str(e)}")
-
-    def load_camera_feed(self, camera_id):
-        try:
-            logger.info(f"Loading feed for camera ID: {camera_id}")
-            
-            self.active_camera_id = camera_id
-            
-            self.highlight_camera(camera_id)
-            
-        except Exception as e:
-            logger.error(f"Error loading camera feed: {str(e)}")
-
-    def update_cam_a_feed(self, cv_image, topic=None):
-        """
-        Update the correct camera widget based on YOLO topic.
-        Also update the camera status in the database (is_active=True).
-        """
-        try:
-            camera_id = None
-            if topic and topic in self.topic_to_camera_id:
-                camera_id = self.topic_to_camera_id[topic]
-            else:
-                cam_a = next((camera for camera in self.cameras if camera.get("name") == "Cam A"), None)
-                if not cam_a:
-                    similar_cam = next((camera for camera in self.cameras 
-                                      if "cam" in (camera.get("name") or '').lower() and "a" in (camera.get("name") or '').lower()), None)
-                    if similar_cam:
-                        cam_a = similar_cam
-                    else:
-                        return
-                camera_id = cam_a["id"]
-
-            camera_widget = self.camera_widgets.get(camera_id)
-            if not camera_widget:
-                return
-
-            # --- Mise à jour du statut dans la base de données ---
-            try:
-                self.camera_service.set_camera_active(camera_id, True)
-                # Mets aussi à jour l'objet local pour cohérence UI
-                for cam in self.cameras:
-                    if cam["id"] == camera_id:
-                        cam["is_active"] = True
-            except Exception as e:
-                logger.error(f"Failed to set camera active in DB: {e}")
-
-            resized_image = cv2.resize(cv_image, (640, 360))
-            height, width, channel = resized_image.shape
-            bytes_per_line = 3 * width
-            
-            rgb_image = cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB)
-            
-            q_image = QImage(rgb_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
-            
-            pixmap = QPixmap.fromImage(q_image)
-            
-            camera_widget.update_feed(pixmap)
-            
-            self.frame_updated.emit(camera_id, pixmap)
-        except Exception as e:
-            logger.error(f"Error updating feed for camera: {str(e)}")
-
-    def feed_timeout_handler(self, camera_id):
-        """
-        Call this when a camera feed times out (no frame received).
-        Update the DB and local state to inactive, and emit feed_stopped.
-        """
-        try:
-            self.camera_service.set_camera_active(camera_id, False)
-            for cam in self.cameras:
-                if cam["id"] == camera_id:
-                    cam["is_active"] = False
-            self.feed_stopped.emit(camera_id)
-        except Exception as e:
-            logger.error(f"Error setting camera inactive on timeout: {str(e)}")
-
-    def closeEvent(self, event):
-        self.db_session.close()
-        super().closeEvent(event)
-
-    def refresh_cameras(self):
-        """Rafraîchir les données des caméras depuis la base de données"""
-        try:
-            logger.info("Rafraîchissement des caméras du LiveFeedScreen depuis la BDD")
-            
-            # Sauvegarder les pixmaps actuels
-            saved_pixmaps = {}
-            for camera_id, widget in self.camera_widgets.items():
-                if hasattr(widget, 'feed_label') and widget.feed_label.pixmap():
-                    saved_pixmaps[camera_id] = widget.feed_label.pixmap()
-            
-            # Recharger les caméras depuis la BD
-            old_cameras = self.cameras
-            self.cameras = [camera_to_dict(cam) for cam in self.camera_service.get_all_cameras()]
-            self.filtered_cameras = self.cameras
-            
-            # Recharger les widgets
-            self.load_cameras()
-            
-            # Restaurer les pixmaps sauvegardés
-            for camera_id, pixmap in saved_pixmaps.items():
-                if camera_id in self.camera_widgets:
-                    self.camera_widgets[camera_id].update_feed(pixmap)
-            
-        except Exception as e:
-            logger.error(f"Erreur lors du rafraîchissement des caméras: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-
-    def prepare_screen(self):
-        """Préparer l'écran avant qu'il ne devienne actif"""
-        try:
-            # S'assurer que la connexion ROS est prête
-            if hasattr(self, 'ros_bridge') and self.ros_bridge:
-                if hasattr(self.ros_bridge, '_check_yolo_topics'):
-                    self.ros_bridge._check_yolo_topics(self.handle_new_yolo_topic)
-            
-            # Rafraîchir les données
-            self.refresh_cameras()
-            logger.info("LiveFeed screen prepared")
-        except Exception as e:
-            logger.error(f"Error preparing LiveFeed screen: {e}")
-
-    def cleanup(self):
-        """Nettoyer les ressources quand on quitte l'écran"""
-        try:
-            # Fermer les vues agrandies si présentes
-            if hasattr(self, 'expanded_camera_widget') and self.expanded_camera_widget:
-                self.close_expanded_camera()
+                widget = self.camera_widgets[camera_id]
+                widget.update_feed(pixmap)
+                # Emit the frame_updated signal for dashboard
+                self.frame_updated.emit(camera_id, pixmap)
                 
-            # Pause les timers si nécessaire
-            for camera_id, widget in self.camera_widgets.items():
-                if hasattr(widget, 'feed_timer') and widget.feed_timer.isActive():
-                    widget.feed_timer.stop()
+                # Also update expanded view if this camera is expanded
+                if (hasattr(self, 'expanded_camera_widget') and 
+                    self.expanded_camera_widget and 
+                    hasattr(self.expanded_camera_widget, 'camera_data') and
+                    self.expanded_camera_widget.camera_data.get('id') == camera_id):
+                    self.expanded_camera_widget.update_feed(pixmap)
                     
-            logger.info("LiveFeed screen cleanup complete")
+                logger.debug(f"[LiveFeed] ✅ Updated feed for camera {camera_id}")
+                return True
+            else:
+                logger.warning(f"[LiveFeed] Camera widget not found for ID {camera_id}")
+                return False
+                
         except Exception as e:
-            logger.error(f"Error cleaning up LiveFeed screen: {e}")
+            logger.error(f"[LiveFeed] Error updating camera feed for {camera_id}: {e}")
+            return False
+
+    def expand_camera(self, camera_id):
+        """Expand the selected camera feed."""
+        try:
+            # Find camera data by ID instead of using index
+            camera_data = None
+            for cam in self.cameras:
+                if cam.get('id') == camera_id:
+                    camera_data = cam
+                    break
+            
+            if not camera_data:
+                logger.error(f"Camera data not found for ID {camera_id}")
+                return
+                
+            # Get current pixmap from widget
+            pixmap = None
+            if camera_id in self.camera_widgets:
+                widget = self.camera_widgets[camera_id]
+                if hasattr(widget, 'current_pixmap'):
+                    pixmap = widget.current_pixmap
+                    
+            self.expanded_camera_widget = ExpandedCameraWidget(camera_data=camera_data, pixmap=pixmap)
+            self.expanded_camera_widget.close_clicked.connect(self.close_expanded_camera)
+            self.expanded_camera_widget.show()
+            
+            logger.info(f"[LiveFeed] Expanded camera {camera_id} ({camera_data.get('name', 'Unknown')})")
+            
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error expanding camera {camera_id}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def close_expanded_camera(self):
+        """Close the expanded camera view"""
+        try:
+            if hasattr(self, 'expanded_camera_widget') and self.expanded_camera_widget:
+                self.expanded_camera_widget.close()
+                self.expanded_camera_widget = None
+                logger.info("[LiveFeed] Closed expanded camera view")
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error closing expanded camera: {e}")
