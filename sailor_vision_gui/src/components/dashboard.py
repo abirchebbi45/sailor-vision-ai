@@ -7,10 +7,11 @@ from PyQt5.QtGui import QPixmap, QIcon, QColor, QFont, QPainter, QPen
 from src.services.camera_service import CameraService
 from models import Camera, Alert, SystemLog
 from src.components.shared import HeaderWidget, Sidebar
-from database import get_session, close_session
+from database import get_session, create_new_session, close_session
 from datetime import datetime
 from PyQt5.QtWidgets import QMessageBox
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -346,11 +347,21 @@ class DashboardScreen(QWidget):
     def __init__(self, user_data=None):
         super().__init__()
         self.user_data = user_data
-        self.camera_service = CameraService(get_session())  # Initialize CameraService
+        
+        # Initialize services with error handling
+        try:
+            self.camera_service = CameraService(create_new_session())
+        except Exception as e:
+            logger.error(f"Failed to initialize camera service: {e}")
+            self.camera_service = None
         
         # Initialize AlertService for proper alert handling
-        from src.services.alert_service import AlertService
-        self.alert_service = AlertService()
+        try:
+            from src.services.alert_service import AlertService
+            self.alert_service = AlertService()
+        except Exception as e:
+            logger.error(f"Failed to initialize alert service: {e}")
+            self.alert_service = None
         
         # Dictionary to store camera widgets by camera ID
         self.camera_widgets = {}
@@ -358,12 +369,26 @@ class DashboardScreen(QWidget):
         # Latest frames for each camera
         self.camera_frames = {}
         
-        self.init_ui()
-        self.update_timer = QTimer()
-        self.update_timer.timeout.connect(self.update_data)
-        self.update_timer.start(30000)  # Update every 30 seconds
-        self.update_data()
-        self.installEventFilter(self)  # Install event filter for responsiveness
+        # Initialize UI with error handling
+        try:
+            self.init_ui()
+            self.update_timer = QTimer()
+            self.update_timer.timeout.connect(self.update_data)
+            self.update_timer.start(30000)  # Update every 30 seconds
+            self.update_data()
+            self.installEventFilter(self)  # Install event filter for responsiveness
+        except Exception as e:
+            logger.error(f"Error initializing dashboard UI: {e}")
+            # Create a minimal fallback UI
+            self.init_fallback_ui()
+
+    def init_fallback_ui(self):
+        """Create a minimal fallback UI if main initialization fails"""
+        layout = QVBoxLayout(self)
+        error_label = QLabel("Dashboard initialization failed. Please check the logs.")
+        error_label.setAlignment(Qt.AlignCenter)
+        error_label.setStyleSheet("color: red; font-size: 16px; padding: 20px;")
+        layout.addWidget(error_label)
 
     def init_ui(self):
         # Create a scroll area for the dashboard content
@@ -554,51 +579,74 @@ class DashboardScreen(QWidget):
     
     def load_cameras(self):
         """Load and display all cameras from the database (always fresh from DB)."""
+        if not self.camera_service:
+            logger.warning("Camera service not available, skipping camera load")
+            return
+            
         self.clear_layout(self.camera_flow_layout)
         self.camera_widgets = {}
-        # Always reload from DB to get the latest status
-        cameras = self.camera_service.get_all_cameras()
-        if not hasattr(self, 'max_cameras'):
-            self.max_cameras = 3
-        cameras_to_show = min(len(cameras), self.max_cameras)
-        remaining_cameras = len(cameras) - cameras_to_show
-        for i in range(cameras_to_show):
-            camera = cameras[i]
-            # Pass the ORM object, but EnhancedCameraWidget only stores primitives
-            camera_widget = EnhancedCameraWidget(camera)
-            camera_widget.clicked.connect(self.navigate_to_live_feed)
-            self.camera_widgets[camera.id] = camera_widget
-            if camera.id in self.camera_frames:
-                camera_widget.update_frame(self.camera_frames[camera.id])
-            self.camera_flow_layout.addWidget(camera_widget)
-        self.camera_flow_layout.addStretch(1)
-        if remaining_cameras > 0:
-            self.more_cameras_label.setText(f"{remaining_cameras} other connected {'camera' if remaining_cameras == 1 else 'cameras'}")
-            self.more_cameras_label.setVisible(True)
-        else:
-            self.more_cameras_label.setVisible(False)
+        
+        try:
+            # Always reload from DB to get the latest status
+            cameras = self.camera_service.get_all_cameras()
+            if not hasattr(self, 'max_cameras'):
+                self.max_cameras = 3
+            cameras_to_show = min(len(cameras), self.max_cameras)
+            remaining_cameras = len(cameras) - cameras_to_show
+            
+            for i in range(cameras_to_show):
+                camera = cameras[i]
+                # Pass the ORM object, but EnhancedCameraWidget only stores primitives
+                camera_widget = EnhancedCameraWidget(camera)
+                camera_widget.clicked.connect(self.navigate_to_live_feed)
+                self.camera_widgets[camera.id] = camera_widget
+                if camera.id in self.camera_frames:
+                    camera_widget.update_frame(self.camera_frames[camera.id])
+                self.camera_flow_layout.addWidget(camera_widget)
+            
+            self.camera_flow_layout.addStretch(1)
+            
+            if remaining_cameras > 0:
+                self.more_cameras_label.setText(f"{remaining_cameras} other connected {'camera' if remaining_cameras == 1 else 'cameras'}")
+                self.more_cameras_label.setVisible(True)
+            else:
+                self.more_cameras_label.setVisible(False)
+                
+        except Exception as e:
+            logger.error(f"Error loading cameras: {e}")
 
     def update_camera_feed(self, camera_id, pixmap):
         """Update a specific camera feed with new frame and set status active in DB."""
         logger.info(f"Updating feed for camera ID: {camera_id}")
         self.camera_frames[camera_id] = pixmap
+
+        # Only update camera status occasionally, not on every frame
+        if not hasattr(self, '_last_status_update'):
+            self._last_status_update = {}
         
-        # Utiliser une nouvelle session pour cette opération au lieu de réutiliser self.camera_service
-        try:
-            # Créer une session fraîche pour cette opération spécifique
-            new_session = get_session()
-            camera_service = CameraService(db_session=new_session)
-            camera_service.set_camera_active(camera_id, True)
-            new_session.commit()
-        except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour de l'état de la caméra: {str(e)}")
-        finally:
-            # Toujours fermer la session
-            if 'new_session' in locals():
-                close_session(new_session)
+        current_time = time.time()
+        last_update = self._last_status_update.get(camera_id, 0)
         
-        # Reload cameras from DB to ensure status is up-to-date everywhere
-        self.load_cameras()
+        # Only update status every 10 seconds to reduce database load
+        if current_time - last_update > 10:
+            try:
+                # Créer une session fraîche pour cette opération spécifique
+                new_session = get_session()
+                camera_service = CameraService(db_session=new_session)
+                camera_service.set_camera_active(camera_id, True)
+                new_session.commit()
+                self._last_status_update[camera_id] = current_time
+            except Exception as e:
+                logger.error(f"Erreur lors de la mise à jour de l'état de la caméra: {str(e)}")
+            finally:
+                # Toujours fermer la session
+                if 'new_session' in locals():
+                    close_session(new_session)
+        
+        # Update widget display without reloading from database
+        if camera_id in self.camera_widgets:
+            widget = self.camera_widgets[camera_id]
+            widget.update_frame(pixmap)  # This will show the live preview!
 
     def camera_feed_stopped(self, camera_id):
         """Handle when a camera feed stops and set status inactive in DB."""
@@ -606,22 +654,33 @@ class DashboardScreen(QWidget):
         if camera_id in self.camera_frames:
             del self.camera_frames[camera_id]
             
-        # Utiliser une nouvelle session pour cette opération également
-        try:
-            # Créer une session fraîche pour cette opération spécifique
-            new_session = get_session()
-            camera_service = CameraService(db_session=new_session)
-            camera_service.set_camera_active(camera_id, False)
-            new_session.commit()
-        except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour de l'état de la caméra: {str(e)}")
-        finally:
-            # Toujours fermer la session
-            if 'new_session' in locals():
-                close_session(new_session)
+        # Update widget display to show no feed
+        if camera_id in self.camera_widgets:
+            widget = self.camera_widgets[camera_id]
+            widget.reset_to_default()
         
-        # Reload cameras from DB to ensure status is up-to-date everywhere
-        self.load_cameras()
+        # Only update database status occasionally
+        if not hasattr(self, '_last_stop_update'):
+            self._last_stop_update = {}
+        
+        current_time = time.time()
+        last_update = self._last_stop_update.get(camera_id, 0)
+        
+        # Only update status every 30 seconds for stop events
+        if current_time - last_update > 30:
+            try:
+                # Créer une session fraîche pour cette opération spécifique
+                new_session = get_session()
+                camera_service = CameraService(db_session=new_session)
+                camera_service.set_camera_active(camera_id, False)
+                new_session.commit()
+                self._last_stop_update[camera_id] = current_time
+            except Exception as e:
+                logger.error(f"Erreur lors de la mise à jour de l'état de la caméra: {str(e)}")
+            finally:
+                # Toujours fermer la session
+                if 'new_session' in locals():
+                    close_session(new_session)
 
     def view_all_alerts(self):
         """Navigate to the alerts screen if there are active alerts, otherwise show a dialog"""
@@ -677,9 +736,14 @@ class DashboardScreen(QWidget):
     
     def load_alerts(self):
         """Load and display real-time alerts from the alert service."""
+        if not self.alert_service:
+            logger.warning("Alert service not available, skipping alerts load")
+            return
+            
         self.clear_layout(self.alerts_container_layout)
         try:
             session = get_session()
+            # Query without is_archived since it doesn't exist in your model
             alerts = session.query(Alert).filter(Alert.is_acknowledged == False).order_by(Alert.timestamp.desc()).limit(5).all()
             total_unack_alerts = session.query(Alert).filter_by(is_acknowledged=False).count()
             
@@ -721,8 +785,9 @@ class DashboardScreen(QWidget):
             self.alerts_container_layout.addWidget(error_label)
             self.alerts_container.setFixedHeight(100)
         finally:
-            close_session(session)
-    
+            if 'session' in locals():
+                close_session(session)
+
     def check_system_status(self):
         """Check and update system status."""
         session = get_session()
