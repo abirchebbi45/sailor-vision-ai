@@ -3,7 +3,7 @@ import time
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, QTimer
 import rclpy
 from rclpy.node import Node
-from database import get_session
+from database import get_session, create_new_session, close_session
 from src.services.camera_service import CameraService
 
 logger = logging.getLogger(__name__)
@@ -15,69 +15,115 @@ class ROSWatchdogWorker(QObject):
     def __init__(self, node):
         super().__init__()
         self.node = node
-        self.last_check_time = 0
-        self.check_interval = 1  # Vérifier toutes les 5 secondes
-        self.ros_connected = True  # Présumer que ROS est initialement connecté
+        self.check_interval = 2  # Check every 2 seconds for faster detection
+        self.ros_connected = True  # Initially assume ROS is connected
         self.camera_topics = {}  # Topic -> timestamp de dernière activité
         self.camera_active_status = {}  # ID de caméra -> statut actif
         self.topic_to_camera_id = {}  # Mappage topic -> ID de caméra
+        self.topic_timeout = 5  # Topic considered inactive after 5 seconds without frames
+        self.ros_health_failures = 0  # Count consecutive health check failures
+        self.max_failures = 3  # Max failures before considering ROS disconnected
         
-        # Obtenir une session de base de données
-        self.db_session = get_session()
-        self.camera_service = CameraService(self.db_session)
-        
-        # Initialiser les mappages depuis la BD
+        # Initialize mappings from database
         self.initialize_camera_mappings()
     
     def initialize_camera_mappings(self):
-        """Initialiser les mappages entre topics et caméras depuis la base de données"""
+        """Initialize mappings between topics and cameras from database"""
         try:
-            cameras = self.camera_service.get_all_cameras()
+            session = create_new_session()
+            camera_service = CameraService(session)
+            cameras = camera_service.get_all_cameras()
+            
             for camera in cameras:
                 camera_id = camera.id
-                # Créer le nom de topic standard pour cette caméra
-                if camera.ip_address:
-                    device_name = camera.ip_address.split('/')[-1]
-                    topic = f"/camera/{device_name}/image_raw"
+                
+                # Create standard topic names for this camera based on ip_address
+                if camera.ip_address and "/dev/video" in camera.ip_address:
+                    # Extract device number from /dev/video2 -> video2
+                    device_name = camera.ip_address.split('/')[-1]  # video2
+                    
+                    # ROS topics that we need to monitor
+                    camera_topic = f"/camera/{device_name}/image_raw"
                     yolo_topic = f"/yolo/{device_name}/image_raw"
                     
-                    self.topic_to_camera_id[topic] = camera_id
+                    # Map both topics to this camera
+                    self.topic_to_camera_id[camera_topic] = camera_id
                     self.topic_to_camera_id[yolo_topic] = camera_id
+                    
+                    # Initialize camera status from database
                     self.camera_active_status[camera_id] = camera.is_active
                     
-                    # Initialiser les timestamps à 0 (inactive)
-                    self.camera_topics[topic] = 0
+                    # Initialize topic activity timestamps (0 = no activity)
+                    self.camera_topics[camera_topic] = 0
                     self.camera_topics[yolo_topic] = 0
+                    
+                    logger.info(f"Initialized watchdog for camera {camera.name} (ID: {camera_id})")
+                    logger.debug(f"  - Camera topic: {camera_topic}")
+                    logger.debug(f"  - YOLO topic: {yolo_topic}")
+            
+            close_session(session)
+                    
         except Exception as e:
-            logger.error(f"Erreur lors de l'initialisation des mappages de caméras: {e}")
+            logger.error(f"Error initializing camera mappings: {e}")
 
     def check_ros_health(self):
-        """Vérifier si les nœuds ROS essentiels sont en cours d'exécution"""
+        """Check if ROS system is healthy by checking nodes and topics"""
         try:
-            # Liste des nœuds essentiels
-            essential_nodes = ['camera_publisher', 'camera_manager', 'yolo_node']
+            # Check if the node is still valid and can make ROS calls
+            if not rclpy.ok():
+                logger.warning("ROS context is not OK")
+                self.ros_health_failures += 1
+            else:
+                # Try to get node names - this will fail if ROS is disconnected
+                try:
+                    node_names_and_namespaces = self.node.get_node_names_and_namespaces()
+                    topics = self.node.get_topic_names_and_types()
+                    
+                    # If we get here, ROS is responding
+                    self.ros_health_failures = 0
+                    
+                    # Check for camera-related topics
+                    topic_names = [topic for topic, _ in topics]
+                    has_camera_topics = any(
+                        ('/camera/' in topic and '/image_raw' in topic) or 
+                        ('/yolo/' in topic and '/image_raw' in topic)
+                        for topic in topic_names
+                    )
+                    
+                    # ROS is healthy if it's responding and we have relevant topics
+                    ros_healthy = has_camera_topics
+                    
+                    # If no camera topics, consider it a "partial" disconnect
+                    if not has_camera_topics:
+                        logger.debug("ROS responding but no camera/YOLO topics found")
+                        self.ros_health_failures += 1
+                    
+                except Exception as e:
+                    logger.warning(f"ROS call failed: {e}")
+                    self.ros_health_failures += 1
+                    ros_healthy = False
             
-            # Obtenir la liste des nœuds ROS actuellement en cours d'exécution
-            node_names_and_namespaces = self.node.get_node_names_and_namespaces()
-            running_nodes = [name for name, namespace in node_names_and_namespaces]
+            # Determine if ROS should be considered disconnected
+            ros_disconnected = self.ros_health_failures >= self.max_failures
             
-            # Vérifier si les nœuds essentiels sont en cours d'exécution
-            essential_running = any(node in running_nodes for node in essential_nodes)
-            
-            # Si l'état a changé, émettre le signal
-            if essential_running != self.ros_connected:
-                logger.warning(f"État ROS changé: {'connecté' if essential_running else 'déconnecté'}")
-                self.ros_connected = essential_running
-                self.ros_status_changed.emit(essential_running)
+            # If ROS status changed
+            if ros_disconnected and self.ros_connected:
+                logger.warning("ROS system detected as disconnected")
+                self.ros_connected = False
+                self.ros_status_changed.emit(False)
+                self.update_all_cameras_inactive()
                 
-                # Si ROS s'est déconnecté, mettre toutes les caméras comme inactives
-                if not essential_running:
-                    self.update_all_cameras_inactive()
+            elif not ros_disconnected and not self.ros_connected:
+                logger.info("ROS system detected as reconnected")
+                self.ros_connected = True
+                self.ros_status_changed.emit(True)
+                # Don't automatically activate cameras on reconnect - wait for actual feeds
                 
-            return essential_running
+            return self.ros_connected
+            
         except Exception as e:
-            logger.error(f"Erreur lors de la vérification de la santé de ROS: {e}")
-            # En cas d'erreur, présumer que ROS est déconnecté
+            logger.error(f"Critical error checking ROS health: {e}")
+            self.ros_health_failures = self.max_failures  # Force disconnect state
             if self.ros_connected:
                 self.ros_connected = False
                 self.ros_status_changed.emit(False)
@@ -85,98 +131,162 @@ class ROSWatchdogWorker(QObject):
             return False
 
     def update_all_cameras_inactive(self):
-        """Marquer toutes les caméras comme inactives"""
+        """Mark all cameras as inactive when ROS disconnects"""
         try:
-            camera_ids = list(self.camera_active_status.keys())
             changed_cameras = []
             
-            for camera_id in camera_ids:
+            for camera_id in self.camera_active_status.keys():
                 if self.camera_active_status.get(camera_id, False):
                     self.camera_active_status[camera_id] = False
-                    changed_cameras.append((camera_id, False))  # ID, nouveau statut
+                    changed_cameras.append(camera_id)
+                    logger.info(f"Camera {camera_id} marked as inactive (ROS disconnected)")
             
             if changed_cameras:
-                # Mise à jour groupée dans la base de données
-                self.camera_service.set_cameras_active([id for id, _ in changed_cameras], False)
-                # Émettre le signal avec la liste des IDs de caméras modifiées
-                self.cameras_status_changed.emit([id for id, _ in changed_cameras])
+                # Update database
+                session = create_new_session()
+                camera_service = CameraService(session)
+                camera_service.set_cameras_active(changed_cameras, False)
+                close_session(session)
+                
+                # Emit signal
+                self.cameras_status_changed.emit(changed_cameras)
+                logger.info(f"Updated {len(changed_cameras)} cameras to inactive in database")
                 
         except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour des caméras inactives: {e}")
+            logger.error(f"Error updating cameras to inactive: {e}")
 
     def update_camera_status(self):
-        """Vérifier l'état des topics de caméra et mettre à jour les statuts"""
-        current_time = time.time()
-        timeout = 5  # Considérer une caméra comme inactive après 5 secondes sans activité
-        
-        # Si ROS est déconnecté, ne rien faire
+        """Check topic activity and update camera status based on video feed availability"""
         if not self.ros_connected:
             return
             
+        current_time = time.time()
+        changed_cameras = []
+        
         try:
-            # Vérifier les topics actuels
-            topics = self.node.get_topic_names_and_types()
-            active_topics = set(topic for topic, _ in topics)
-            
-            # Caméras avec changement d'état
-            changed_cameras = []
-            
-            # Parcourir les topics de caméra connus
-            for topic, last_active in self.camera_topics.items():
-                # Vérifier si le topic existe encore
-                if topic not in active_topics:
-                    continue
+            # Check each camera's topic activity
+            for camera_id in self.camera_active_status.keys():
+                # Find topics for this camera
+                camera_topics = [topic for topic, cam_id in self.topic_to_camera_id.items() if cam_id == camera_id]
+                
+                # Check if any topic for this camera has recent activity
+                has_recent_activity = False
+                last_activity_time = 0
+                
+                for topic in camera_topics:
+                    topic_last_activity = self.camera_topics.get(topic, 0)
+                    if topic_last_activity > 0:  # Has had activity at some point
+                        time_since_activity = current_time - topic_last_activity
+                        if time_since_activity < self.topic_timeout:
+                            has_recent_activity = True
+                            last_activity_time = max(last_activity_time, topic_last_activity)
+                
+                # Determine if camera should be active
+                should_be_active = has_recent_activity
+                current_status = self.camera_active_status.get(camera_id, False)
+                
+                # If status should change
+                if should_be_active != current_status:
+                    self.camera_active_status[camera_id] = should_be_active
+                    changed_cameras.append(camera_id)
                     
-                camera_id = self.topic_to_camera_id.get(topic)
-                if not camera_id:
-                    continue
-                
-                # Vérifier l'activité (dernière mise à jour)
-                is_active = (current_time - last_active) < timeout
-                
-                # Si l'état a changé
-                if is_active != self.camera_active_status.get(camera_id, False):
-                    self.camera_active_status[camera_id] = is_active
-                    changed_cameras.append((camera_id, is_active))
+                    if should_be_active:
+                        logger.info(f"Camera {camera_id} activated (video feed detected)")
+                    else:
+                        time_since = current_time - last_activity_time if last_activity_time > 0 else 999
+                        logger.info(f"Camera {camera_id} deactivated (no feed for {time_since:.1f}s)")
             
-            # Mettre à jour la base de données et émettre le signal si nécessaire
+            # Update database and emit signals if there are changes
             if changed_cameras:
-                # Grouper par état
-                active_cameras = [id for id, state in changed_cameras if state]
-                inactive_cameras = [id for id, state in changed_cameras if not state]
+                session = create_new_session()
+                camera_service = CameraService(session)
+                
+                # Group by new status
+                active_cameras = [cam_id for cam_id in changed_cameras if self.camera_active_status[cam_id]]
+                inactive_cameras = [cam_id for cam_id in changed_cameras if not self.camera_active_status[cam_id]]
                 
                 if active_cameras:
-                    self.camera_service.set_cameras_active(active_cameras, True)
+                    camera_service.set_cameras_active(active_cameras, True)
+                    logger.info(f"Set {len(active_cameras)} cameras as active: {active_cameras}")
                 
                 if inactive_cameras:
-                    self.camera_service.set_cameras_active(inactive_cameras, False)
+                    camera_service.set_cameras_active(inactive_cameras, False)
+                    logger.info(f"Set {len(inactive_cameras)} cameras as inactive: {inactive_cameras}")
                 
-                # Émettre le signal avec la liste des IDs de caméras modifiées
-                self.cameras_status_changed.emit([id for id, _ in changed_cameras])
+                close_session(session)
+                
+                # Emit signal with all changed camera IDs
+                self.cameras_status_changed.emit(changed_cameras)
         
         except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour des statuts de caméra: {e}")
+            logger.error(f"Error updating camera status: {e}")
     
     def register_topic_activity(self, topic):
-        """Enregistrer l'activité sur un topic"""
+        """Register activity on a topic (called when frames are received)"""
+        current_time = time.time()
+        
         if topic in self.camera_topics:
-            self.camera_topics[topic] = time.time()
-    
+            self.camera_topics[topic] = current_time
+            
+            # Reset ROS health failures since we're receiving data
+            if self.ros_health_failures > 0:
+                self.ros_health_failures = 0
+                if not self.ros_connected:
+                    logger.info("ROS reconnected (topic activity detected)")
+                    self.ros_connected = True
+                    self.ros_status_changed.emit(True)
+            
+        else:
+            # New topic detected
+            self.camera_topics[topic] = current_time
+            logger.info(f"New topic activity detected: {topic}")
+            
+            # Try to map to a camera if it follows our naming convention
+            if ("/camera/" in topic or "/yolo/" in topic) and "/image_raw" in topic:
+                parts = topic.split('/')
+                if len(parts) >= 3:
+                    device_name = parts[2]  # Extract device name like 'video2'
+                    
+                    # Find camera with matching device
+                    session = create_new_session()
+                    camera_service = CameraService(session)
+                    cameras = camera_service.get_all_cameras()
+                    
+                    for camera in cameras:
+                        if camera.ip_address and device_name in camera.ip_address:
+                            self.topic_to_camera_id[topic] = camera.id
+                            if camera.id not in self.camera_active_status:
+                                self.camera_active_status[camera.id] = False
+                            logger.info(f"Mapped new topic {topic} to camera {camera.id}")
+                            break
+                    
+                    close_session(session)
+
     def run(self):
-        """Méthode principale du watchdog"""
-        while True:
-            try:
+        """Main watchdog loop - runs in separate thread"""
+        logger.info("ROS Watchdog started")
+        last_check_time = 0
+        
+        try:
+            while True:
                 current_time = time.time()
-                if current_time - self.last_check_time >= self.check_interval:
+                
+                # Check ROS health and camera status at regular intervals
+                if current_time - last_check_time >= self.check_interval:
                     self.check_ros_health()
                     self.update_camera_status()
-                    self.last_check_time = current_time
+                    last_check_time = current_time
                 
-                # Pause courte pour ne pas surcharger le CPU
+                # Short pause to avoid excessive CPU usage
                 time.sleep(0.1)
-            except Exception as e:
-                logger.error(f"Erreur dans la boucle de surveillance ROS: {e}")
-                time.sleep(1)  # Pause plus longue en cas d'erreur
+                
+        except Exception as e:
+            logger.error(f"Error in ROS watchdog loop: {e}")
+            # Mark ROS as disconnected on critical error
+            if self.ros_connected:
+                self.ros_connected = False
+                self.ros_status_changed.emit(False)
+                self.update_all_cameras_inactive()
 
 class ROSWatchdog(QObject):
     ros_status_changed = pyqtSignal(bool)
@@ -188,41 +298,50 @@ class ROSWatchdog(QObject):
         self.worker = None
         self.worker_thread = None
         
-        # Démarrer le watchdog dans un thread séparé
+        # Start the watchdog in a separate thread
         self.start_watchdog()
     
     def start_watchdog(self):
-        """Démarrer le watchdog dans un thread séparé"""
-        self.worker_thread = QThread()
-        self.worker = ROSWatchdogWorker(self.ros_node)
-        
-        # Déplacer le worker dans le thread
-        self.worker.moveToThread(self.worker_thread)
-        
-        # Connecter les signaux
-        self.worker.ros_status_changed.connect(self.ros_status_changed)
-        self.worker.cameras_status_changed.connect(self.cameras_status_changed)
-        
-        # Connecter le signal de démarrage du thread
-        self.worker_thread.started.connect(self.worker.run)
-        
-        # Démarrer le thread
-        self.worker_thread.start()
-        
-        logger.info("Watchdog ROS démarré avec succès")
+        """Start the watchdog in a separate thread"""
+        try:
+            self.worker_thread = QThread()
+            self.worker = ROSWatchdogWorker(self.ros_node)
+            
+            # Move worker to thread
+            self.worker.moveToThread(self.worker_thread)
+            
+            # Connect signals
+            self.worker.ros_status_changed.connect(self.ros_status_changed)
+            self.worker.cameras_status_changed.connect(self.cameras_status_changed)
+            
+            # Connect thread start signal
+            self.worker_thread.started.connect(self.worker.run)
+            
+            # Start thread
+            self.worker_thread.start()
+            
+            logger.info("ROS Watchdog started successfully")
+            
+        except Exception as e:
+            logger.error(f"Error starting ROS Watchdog: {e}")
     
     def register_topic_activity(self, topic):
-        """Enregistrer l'activité sur un topic (appelé depuis d'autres composants)"""
+        """Register topic activity (called from other components when frames are received)"""
         if self.worker:
             self.worker.register_topic_activity(topic)
     
     def get_ros_status(self):
-        """Obtenir l'état actuel de ROS"""
+        """Get current ROS status"""
         return self.worker.ros_connected if self.worker else False
     
     def cleanup(self):
-        """Nettoyer les ressources avant la fermeture"""
-        if self.worker_thread and self.worker_thread.isRunning():
-            self.worker_thread.quit()
-            self.worker_thread.wait()
-            logger.info("Watchdog ROS arrêté proprement")
+        """Clean up resources before shutdown"""
+        try:
+            if self.worker_thread and self.worker_thread.isRunning():
+                self.worker_thread.quit()
+                self.worker_thread.wait(5000)  # Wait up to 5 seconds
+                if self.worker_thread.isRunning():
+                    self.worker_thread.terminate()
+                logger.info("ROS Watchdog stopped cleanly")
+        except Exception as e:
+            logger.error(f"Error cleaning up ROS Watchdog: {e}")
