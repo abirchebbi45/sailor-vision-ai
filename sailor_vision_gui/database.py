@@ -38,29 +38,23 @@ def init_db():
         return False
 
 def get_session():
-    """Get a new session."""
-    global engine, Session  # Déplacé au début de la fonction
-    
     try:
         session = Session()
+        if session is None:
+            raise ValueError("Session is None")
         return session
     except Exception as e:
-        logger.error(f"Error creating DB session: {e}")
-        # Essayer de recréer l'engine et le sessionmaker
-        import sqlalchemy
-        try:
-            db_url = get_db_url()  # Utiliser get_db_url() au lieu de DB_URL
-            engine = sqlalchemy.create_engine(db_url)
-            Session = sqlalchemy.orm.sessionmaker(bind=engine)
-            return Session()
-        except Exception as e2:
-            logger.error(f"Could not recover database connection: {e2}")
-            raise
+        logger.error(f"Error creating new session: {e}")
+        return None
 
 def close_session(session):
-    """Close a session safely."""
+    """Close database session"""
     if session:
-        try:
-            session.close()
-        except Exception as e:
-            logger.error(f"Error closing DB session: {e}")
+        session.close()
+
+# Ensure the session factory is initialized correctly
+def create_new_session():
+    global Session
+    if Session is None:
+        raise RuntimeError("Session factory is not initialized. Call init_db() first.")
+    return Session()
