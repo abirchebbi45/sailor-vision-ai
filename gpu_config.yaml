@@ -1,0 +1,7 @@
+batch_size: 4
+benchmark_mode: true
+device: auto
+gpu_optimizations: true
+img_size: 640
+mixed_precision: true
+workers: 2
