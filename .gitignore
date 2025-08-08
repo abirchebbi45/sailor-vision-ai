@@ -6,3 +6,16 @@ __pycache__/
 *.log
 venv
 sailor-vision-env
+data_balanced/
+outputs/
+data/images/val_new/
+data/images/test_internal/
+data/images/val_original_backup/
+__pycache__/
+*.pyc
+*.pyo
+balance_dataset_debug.log
+training_*.log
+evaluation_*.log
+*.pt
+*.pth
