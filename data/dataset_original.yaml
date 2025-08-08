@@ -1,0 +1,9 @@
+names:
+- swimmer
+- swimmer with life jacket
+- boat
+- life jacket
+nc: 4
+test: ../data/images/test
+train: ../data/images/train
+val: ../data/images/val_new
