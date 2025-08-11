@@ -8,7 +8,6 @@ from database import Base
 class UserRole(enum.Enum):
     ADMINISTRATOR = "Administrator"
     OPERATOR = "Operator"
-    GUEST = "Guest"
 
 class AlertType(enum.Enum):
     GENERAL_DETECTION = "Détection Générale"
@@ -34,7 +33,7 @@ class User(Base):
     password_hash = Column(String(256), nullable=False)
     first_name = Column(String(50))
     last_name = Column(String(50))
-    role = Column(Enum(UserRole), default=UserRole.GUEST)
+    role = Column(Enum(UserRole), default=UserRole.OPERATOR)
     job_title = Column(String(100))
     profile_picture = Column(String)  # Path to profile picture
     is_active = Column(Boolean, default=True)
@@ -74,7 +73,7 @@ class Recording(Base):
     
     id = Column(Integer, primary_key=True)
     camera_id = Column(Integer, ForeignKey("cameras.id"), nullable=False)
-    file_path = Column(String(256), nullable=False)
+    file_path = Column(String(256))
     name = Column(String, nullable=False)  
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime)
