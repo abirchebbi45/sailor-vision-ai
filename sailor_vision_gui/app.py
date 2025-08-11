@@ -5,7 +5,7 @@ import traceback
 # Add the src directory to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QStackedWidget, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QStackedWidget, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox, QLabel
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import QIcon, QFontDatabase, QFont
 import logging
@@ -21,6 +21,11 @@ from src.components.playback import PlaybackScreen
 from src.components.shared import Sidebar, HeaderWidget
 from src.components.settings import SettingsScreen
 from src.components.camera_notification import NotificationManager
+
+# Import the permission service
+from src.services.permission_service import PermissionService, Permission
+from src.services.user_session import UserSession
+from src.utils.permission_helpers import MainWindowPermissionMixin
 
 # Import the watchdog ROS
 from shared.ros_watchdog import ROSWatchdog
@@ -46,7 +51,7 @@ if not logger.hasHandlers():
     console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(console_handler)
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow, MainWindowPermissionMixin):
     def __init__(self, ros_node):
         """Initialize the main application window"""
         super().__init__()
@@ -108,6 +113,13 @@ class MainWindow(QMainWindow):
         """Handle successful login and transition to the main interface"""
         logger.debug("Login successful, loading main interface")
         
+        # Store current user for permission checks
+        self.current_user = user_data
+        
+        # IMPORTANT: Configurer UserSession avec les données utilisateur
+        user_session = UserSession.get_instance()
+        user_session.set_user(user_data)
+        
         # Clean up login screen
         self.login_screen.setParent(None)
         self.main_layout.removeWidget(self.login_screen)
@@ -120,6 +132,18 @@ class MainWindow(QMainWindow):
         # Clean up previous content
         if self.current_content:
             self.current_content.deleteLater()
+        
+        # IMPORTANT: S'assurer que UserSession est configuré avant d'initialiser les écrans
+        user_session = UserSession.get_instance()
+        if not user_session.is_authenticated:
+            user_session.set_user(user_data)
+        
+        # Debug: Vérifier que UserSession est correctement configuré
+        logger.info(f"UserSession before screens init: ID={id(user_session)}, authenticated={user_session.is_authenticated}, permissions={len(getattr(user_session, 'permissions', []))}")
+        
+        # Debug: Forcer la vérification que c'est la même instance
+        test_session = UserSession.get_instance()
+        logger.info(f"UserSession test instance: ID={id(test_session)}, same_instance={id(user_session) == id(test_session)}")
         
         # Create main container
         self.current_content = QWidget()
@@ -168,26 +192,61 @@ class MainWindow(QMainWindow):
         self.stacked_widget = QStackedWidget()
         self.initialize_screens(user_data)
         
-        # Sidebar connections
-        self.sidebar.dashboard_clicked.connect(
-            lambda: self.switch_view("Dashboard", self.dashboard_screen)
-        )
-        self.sidebar.live_feed_clicked.connect(
-            lambda: self.switch_view("Live Feed", self.live_feed_screen)
-        )
-        self.sidebar.playback_clicked.connect(
-            lambda: self.switch_view("Playback", self.playback_screen)
-        )
-        self.sidebar.alerts_clicked.connect(
-            lambda: self.switch_view("Alerts", self.alerts_screen)  
-        )
-        self.sidebar.user_management_clicked.connect(
-            lambda: self.switch_view("User Management",  self.user_management_screen)  
-        )
-        self.sidebar.settings_clicked.connect(
-            lambda: self.switch_view("Settings", self.settings_screen)
-        )
-        self.sidebar.logout_clicked.connect(self.handle_logout)  # Connect logout signal
+        # Sidebar connections - configure based on permissions
+        # Dashboard - toujours visible
+        if hasattr(self, 'dashboard_screen') and self.dashboard_screen:
+            self.sidebar.dashboard_clicked.connect(
+                lambda: self.switch_view("Dashboard", self.dashboard_screen)
+            )
+        else:
+            self.sidebar.hide_dashboard_button()
+            
+        # Live Feed - toujours visible
+        if hasattr(self, 'live_feed_screen') and self.live_feed_screen:
+            self.sidebar.live_feed_clicked.connect(
+                lambda: self.switch_view("Live Feed", self.live_feed_screen)
+            )
+        else:
+            self.sidebar.hide_live_feed_button()
+            
+        # Playback - admin et opérateur
+        if hasattr(self, 'playback_screen') and self.playback_screen:
+            self.sidebar.playback_clicked.connect(
+                lambda: self.switch_view("Playback", self.playback_screen)
+            )
+        else:
+            self.sidebar.hide_playback_button()
+            
+        # Alerts - admin et opérateur
+        if hasattr(self, 'alerts_screen') and self.alerts_screen:
+            self.sidebar.alerts_clicked.connect(
+                lambda: self.switch_view("Alerts", self.alerts_screen)  
+            )
+        else:
+            self.sidebar.hide_alerts_button()
+            
+        # User Management - admin uniquement
+        if hasattr(self, 'user_management_screen') and self.user_management_screen:
+            self.sidebar.user_management_clicked.connect(
+                lambda: self.switch_view("User Management", self.user_management_screen)  
+            )
+        else:
+            self.sidebar.hide_user_management_button()
+            
+        # Settings - toujours visible mais contenu différent selon le rôle
+        if hasattr(self, 'settings_screen') and self.settings_screen:
+            self.sidebar.settings_clicked.connect(
+                lambda: self.switch_view("Settings", self.settings_screen)
+            )
+            # Connecter le bouton "View Profile" du menu popup pour naviguer vers les paramètres
+            self.sidebar.view_profile_clicked.connect(
+                lambda: self.switch_view("Settings", self.settings_screen)
+            )
+        else:
+            self.sidebar.hide_settings_button()
+            
+        # Logout - toujours disponible
+        self.sidebar.logout_clicked.connect(self.handle_logout)
 
         content_layout.addWidget(self.stacked_widget)
         main_layout.addWidget(content_widget, 1)  # Give content area stretch factor of 1
@@ -228,6 +287,22 @@ class MainWindow(QMainWindow):
             pending_count = len(pending_camera_manager.pending_cameras)
             self.notification_manager.show_camera_notification(camera_name, camera_ip, pending_count)
 
+    def check_screen_access(self, screen_title, permission):
+        """Vérifier l'accès à un écran en utilisant UserSession optimisé"""
+        user_session = UserSession.get_instance()
+        
+        # Vérifier si l'utilisateur est authentifié
+        if not user_session.is_authenticated:
+            logger.warning(f"User not authenticated for screen: {screen_title}")
+            return False
+            
+        # Vérifier la permission spécifique
+        has_permission = user_session.has_permission(permission)
+        if not has_permission:
+            logger.warning(f"User {user_session.get_username()} lacks permission {permission.value} for screen: {screen_title}")
+        
+        return has_permission
+
     def switch_view(self, title, widget):
         """Change the active view in the application"""
         if not widget:
@@ -237,6 +312,26 @@ class MainWindow(QMainWindow):
         # Verify that the widget is in the stack
         if widget not in [self.stacked_widget.widget(i) for i in range(self.stacked_widget.count())]:
             logger.error(f"Widget for '{title}' not found in stacked widget")
+            return
+            
+        # Check permission based on screen title
+        permission = None
+        if title == "Dashboard":
+            permission = Permission.VIEW_DASHBOARD
+        elif title == "Live Feed":
+            permission = Permission.VIEW_LIVE_FEED
+        elif title == "Playback":
+            permission = Permission.VIEW_RECORDINGS
+        elif title == "Alerts":
+            permission = Permission.VIEW_ALERTS
+        elif title == "User Management":
+            permission = Permission.VIEW_USERS
+        elif title == "Settings":
+            permission = Permission.VIEW_SETTINGS
+            
+        # Check permission if applicable
+        if permission and not self.check_screen_access(title, permission):
+            logger.warning(f"Access denied to screen: {title}")
             return
             
         try:
@@ -323,55 +418,104 @@ class MainWindow(QMainWindow):
             logger.error(traceback.format_exc())
 
     def initialize_screens(self, user_data):
-        """Initialize different screens for the application"""
+        """Initialize different screens for the application based on user permissions"""
         try:
-            # Initialize each screen with error handling and its own session
-            try:
-                self.dashboard_screen = DashboardScreen(user_data=user_data)
-                logger.info("Dashboard screen initialized")
-            except Exception as e:
-                logger.error(f"Error initializing dashboard: {e}")
-                self.dashboard_screen = None
+            # Utiliser UserSession optimisé pour les vérifications de permissions
+            user_session = UserSession.get_instance()
             
-            try:
-                self.live_feed_screen = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node, ros_bridge=self.ros_bridge)
-                logger.info("Live feed screen initialized")
-            except Exception as e:
-                logger.error(f"Error initializing live feed: {e}")
-                self.live_feed_screen = None
+            # Configurer les écrans selon les permissions
+            self.dashboard_screen = None
+            self.live_feed_screen = None
+            self.alerts_screen = None
+            self.user_management_screen = None
+            self.playback_screen = None
+            self.settings_screen = None
             
-            try:
-                self.alerts_screen = AlertsScreen(user_data=user_data, ros_node=self.ros_node)
-                logger.info("Alerts screen initialized")
-            except Exception as e:
-                logger.error(f"Error initializing alerts: {e}")
-                self.alerts_screen = None
+            # Dashboard - accessible à tous les utilisateurs
+            if user_session.has_permission(Permission.VIEW_DASHBOARD):
+                try:
+                    self.dashboard_screen = DashboardScreen(user_data=user_data)
+                    logger.info("Dashboard screen initialized")
+                    self.stacked_widget.addWidget(self.dashboard_screen)
+                except Exception as e:
+                    logger.error(f"Error initializing dashboard: {e}")
+                    self.dashboard_screen = None
+            else:
+                logger.warning(f"User {user_data.get('username')} does not have permission to access Dashboard")
             
-            try:
-                # Create a new session for user management
-                user_mgmt_session = create_new_session()
-                self.user_management_screen = UserManagementScreen(user_data=user_data, db_session=user_mgmt_session)
-                logger.info("User management screen initialized")
-            except Exception as e:
-                logger.error(f"Error initializing user management: {e}")
-                self.user_management_screen = None
+            # Live Feed - accessible à tous les utilisateurs
+            if user_session.has_permission(Permission.VIEW_LIVE_FEED):
+                try:
+                    self.live_feed_screen = LiveFeedScreen(user_data=user_data, ros_node=self.ros_node, ros_bridge=self.ros_bridge)
+                    logger.info("Live feed screen initialized")
+                    self.stacked_widget.addWidget(self.live_feed_screen)
+                except Exception as e:
+                    logger.error(f"Error initializing live feed: {e}")
+                    self.live_feed_screen = None
+            else:
+                logger.warning(f"User {user_data.get('username')} does not have permission to access Live Feed")
             
-            try:
-                self.playback_screen = PlaybackScreen(user_data=user_data, ros_node=self.ros_node)
-                logger.info("Playback screen initialized")
-            except Exception as e:
-                logger.error(f"Error initializing playback: {e}")
-                self.playback_screen = None
+            # Alerts - accessible aux admins et opérateurs
+            if user_session.has_permission(Permission.VIEW_ALERTS):
+                try:
+                    self.alerts_screen = AlertsScreen(user_data=user_data, ros_node=self.ros_node)
+                    logger.info("Alerts screen initialized")
+                    self.stacked_widget.addWidget(self.alerts_screen)
+                except Exception as e:
+                    logger.error(f"Error initializing alerts: {e}")
+                    self.alerts_screen = None
+            else:
+                logger.warning(f"User {user_data.get('username')} does not have permission to access Alerts")
             
-            try:
-                # Create a new session for settings
-                settings_session = create_new_session()
-                self.settings_screen = SettingsScreen(user=user_data, db_session=settings_session)
-                logger.info("Settings screen initialized")
-            except Exception as e:
-                logger.error(f"Error initializing settings: {e}")
-                # Create a simple fallback settings screen
-                self.settings_screen = None
+            # User Management - accessible uniquement aux admins
+            if user_session.has_permission(Permission.VIEW_USERS):
+                try:
+                    # Create a new session for user management
+                    user_mgmt_session = create_new_session()
+                    self.user_management_screen = UserManagementScreen(user_data=user_data, db_session=user_mgmt_session)
+                    logger.info("User management screen initialized")
+                    self.stacked_widget.addWidget(self.user_management_screen)
+                except Exception as e:
+                    logger.error(f"Error initializing user management: {e}")
+                    self.user_management_screen = None
+            else:
+                logger.warning(f"User {user_data.get('username')} does not have permission to access User Management")
+            
+            # Playback - accessible aux admins et opérateurs
+            if user_session.has_permission(Permission.VIEW_RECORDINGS):
+                try:
+                    self.playback_screen = PlaybackScreen(user_data=user_data, ros_node=self.ros_node)
+                    logger.info("Playback screen initialized")
+                    self.stacked_widget.addWidget(self.playback_screen)
+                except Exception as e:
+                    logger.error(f"Error initializing playback: {e}")
+                    self.playback_screen = None
+            else:
+                logger.warning(f"User {user_data.get('username')} does not have permission to access Playback")
+            
+            # Settings - accessible à tous les utilisateurs mais avec différentes capacités
+            if user_session.has_permission(Permission.VIEW_SETTINGS):
+                try:
+                    # Create a new session for settings
+                    settings_session = create_new_session()
+                    self.settings_screen = SettingsScreen(user=user_data, db_session=settings_session)
+                    logger.info("Settings screen initialized")
+                    self.stacked_widget.addWidget(self.settings_screen)
+                except Exception as e:
+                    logger.error(f"Error initializing settings: {e}")
+                    logger.error(traceback.format_exc())
+                    # Fallback en cas d'erreur avec une meilleure approche
+                    # Créer une classe simple qui hérite de QWidget et a le signal requis
+                    class FallbackSettingsWidget(QWidget):
+                        camera_approved_signal = pyqtSignal(dict)
+                    
+                    self.settings_screen = FallbackSettingsWidget()
+                    layout = QVBoxLayout(self.settings_screen)
+                    layout.addWidget(QLabel("Settings - Profile Only Mode"))
+                    self.stacked_widget.addWidget(self.settings_screen)
+                    logger.info("Fallback settings screen initialized")
+            else:
+                logger.warning(f"User {user_data.get('username')} does not have permission to access Settings")
 
             # Connect signals only if screens are initialized
             if self.live_feed_screen and self.dashboard_screen:
