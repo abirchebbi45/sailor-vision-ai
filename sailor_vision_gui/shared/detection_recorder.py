@@ -333,6 +333,9 @@ class DetectionRecorder(QObject):
         )
         os.makedirs(storage_path, exist_ok=True)
         
+        # Ajout de logs pour vérifier le chemin de stockage
+        logger.debug(f"Saving video to storage path: {storage_path}")
+        
         # Nom de fichier avec ID d'incident
         timestamp = start_time.strftime('%H%M%S')
         filename = f"{incident_id}_{timestamp}_{class_name}.mp4"
