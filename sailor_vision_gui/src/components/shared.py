@@ -2,7 +2,7 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QPushButton, QFrame, QSizePolicy, QSlider,
                             QToolButton, QLineEdit)
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QUrl
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QUrl, QPoint
 from PyQt5.QtGui import QPixmap, QIcon, QPainter, QColor, QPen, QPainterPath
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget  # Import QVideoWidget
@@ -26,29 +26,45 @@ class HeaderWidget(QWidget):
         super().__init__(parent)
         self.title = title
         self.action_button_text = action_button_text
+        self.show_search = True
         self.init_ui()
 
     def init_ui(self):
         self.setObjectName("headerWidget")
-        self.setFixedHeight(100)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(15, 0, 15, 0)
+        self.setFixedHeight(60)
+        # Layout principal horizontal
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(20, 0, 20, 0)
+        main_layout.setSpacing(10)
 
-        # — Titre —
+        # Container pour le titre (aligné en bas)
+        title_container = QWidget()
+        title_layout = QVBoxLayout(title_container)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.addStretch()  # Pousse le titre vers le bas
+        
         self.title_label = QLabel(self.title)
         self.title_label.setObjectName("pageTitleLabel")
-        self.title_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        layout.addWidget(self.title_label)
+        title_layout.addWidget(self.title_label)
+        title_layout.addSpacing(10)  # Petit espace du bas
+        
+        main_layout.addWidget(title_container)
+        main_layout.addStretch()  # Spacer
 
-        layout.addStretch()
-
-        # — Search box —
-        self.search_box = QLineEdit()
-        self.search_box.setObjectName("searchBox")
-        self.search_box.setPlaceholderText("Search...")
-        self.search_box.setFixedHeight(30)
-        self.search_box.textChanged.connect(self.on_search_text_changed)
-        layout.addWidget(self.search_box)
+        # Container pour la searchbox (alignée en bas)
+        if self.show_search:
+            search_container = QWidget()
+            search_layout = QVBoxLayout(search_container)
+            search_layout.setContentsMargins(0, 0, 0, 0)
+            search_layout.addStretch()  # Pousse la searchbox vers le bas
+            
+            self.search_box = QLineEdit()
+            self.search_box.setObjectName("searchBox")
+            self.search_box.setPlaceholderText(f"Search {self.title.lower()}...")
+            search_layout.addWidget(self.search_box)
+            search_layout.addSpacing(10)  # Même espace que le titre
+            
+            main_layout.addWidget(search_container)
 
         # — Bouton d’action (optionnel) —
         if self.action_button_text:
@@ -57,10 +73,10 @@ class HeaderWidget(QWidget):
             btn.setCursor(Qt.PointingHandCursor)
             btn.setFixedHeight(30)
             btn.clicked.connect(self.on_action_button_clicked)
-            layout.addWidget(btn)
+            main_layout.addWidget(btn)
 
-        self.setLayout(layout)
-    
+        self.setLayout(main_layout)
+
     def set_title(self, title):
         self.title = title
         self.title_label.setText(title)
@@ -393,6 +409,63 @@ class Sidebar(QWidget):
         self.profile_clicked.emit()
 
     def toggle_profile_menu(self, event):
+        """Toggle the profile menu when user avatar is clicked"""
+        # Ignore any automatic event, only process actual mouse clicks
+        if event.type() != QEvent.MouseButtonPress:
+            return
+            
+        if self.profile_menu.isVisible():
+            self.profile_menu.setVisible(False)
+        else:
+            # Position the menu correctly relative to the avatar
+            avatar_pos = self.avatar_label.mapToGlobal(QPoint(0, 0))
+            window_pos = self.window().mapFromGlobal(avatar_pos)
+            menu_width = 150
+            menu_height = 80
+            
+            # Position to the right of the avatar and slightly below
+            menu_x = window_pos.x() + self.avatar_label.width()
+            menu_y = window_pos.y() + self.avatar_label.height()
+            
+            # Ensure menu doesn't go outside window boundaries
+            window_width = self.window().width()
+            if menu_x + menu_width > window_width:
+                menu_x = window_pos.x() - menu_width
+                
+            self.profile_menu.setGeometry(menu_x, menu_y, menu_width, menu_height)
+            self.profile_menu.setVisible(True)
+            self.profile_menu.raise_()
+        
+    # Méthodes pour masquer/afficher les boutons en fonction des permissions
+    def hide_dashboard_button(self):
+        """Masque le bouton Dashboard dans la barre latérale"""
+        if hasattr(self, 'dashboard_btn'):
+            self.dashboard_btn.setVisible(False)
+            
+    def hide_live_feed_button(self):
+        """Masque le bouton Live Feed dans la barre latérale"""
+        if hasattr(self, 'live_feed_btn'):
+            self.live_feed_btn.setVisible(False)
+            
+    def hide_playback_button(self):
+        """Masque le bouton Playback dans la barre latérale"""
+        if hasattr(self, 'playback_btn'):
+            self.playback_btn.setVisible(False)
+            
+    def hide_alerts_button(self):
+        """Masque le bouton Alerts dans la barre latérale"""
+        if hasattr(self, 'alerts_btn'):
+            self.alerts_btn.setVisible(False)
+            
+    def hide_user_management_button(self):
+        """Masque le bouton User Management dans la barre latérale"""
+        if hasattr(self, 'user_mgmt_btn'):
+            self.user_mgmt_btn.setVisible(False)
+            
+    def hide_settings_button(self):
+        """Masque le bouton Settings dans la barre latérale"""
+        if hasattr(self, 'settings_btn'):
+            self.settings_btn.setVisible(False)
         """Toggle the visibility of the profile menu and position it above the avatar."""
         if self.profile_menu.isVisible():
             self.profile_menu.setVisible(False)
