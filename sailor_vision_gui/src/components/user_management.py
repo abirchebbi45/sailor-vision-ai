@@ -192,7 +192,7 @@ class UserDialog(QDialog):
             "first_name": self.firstname_input.text().strip(),
             "last_name": self.lastname_input.text().strip(),
             "job_title": self.job_input.text().strip(),
-            "role": self.role_combo.currentData(),
+            "role": UserRole[self.role_combo.currentData().name],
             "profile_picture": self.picture_input.text().strip()
         }
         
@@ -213,6 +213,7 @@ class UserDialog(QDialog):
             else:
                 QMessageBox.critical(self, "Error", "Email or username already in use.")
         except Exception as e:
+            print(f"Error saving user: {e}", user_data)
             QMessageBox.critical(self, "Error", "Failed to save user. Please try again.")
     
     def validate_input(self):
@@ -284,7 +285,7 @@ class UserManagementScreen(QWidget):
     
     def show_add_user_dialog(self):
         """Open a dialog to add a new user and refresh the user list upon success."""
-        dialog = UserDialog(parent=self)
+        dialog = UserDialog(db_session=self.db_session, parent=self)
         
         if dialog.exec_() == QDialog.Accepted:
             # Reload users
@@ -294,7 +295,7 @@ class UserManagementScreen(QWidget):
         """Open a dialog to edit an existing user's details and refresh the user list upon success."""
         user = self.user_service.get_user(user_id)
         if user:
-            dialog = UserDialog(user, parent=self)
+            dialog = UserDialog(user, db_session=self.db_session, parent=self)
             
             if dialog.exec_() == QDialog.Accepted:
                 # Reload users
