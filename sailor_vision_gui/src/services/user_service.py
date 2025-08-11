@@ -68,7 +68,7 @@ class UserService:
                 password_hash=password_hash,
                 first_name=user_data.get('first_name'),
                 last_name=user_data.get('last_name'),
-                role=user_data.get('role', UserRole.GUEST),
+                role=user_data.get('role', UserRole.OPERATOR),
                 job_title=user_data.get('job_title'),
                 profile_picture=user_data.get('profile_picture'),
                 is_active=True,
