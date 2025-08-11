@@ -81,15 +81,12 @@ class AlertDetailsDialog(QDialog):
         btn_save_notes.setObjectName("secondaryButton")
         btn_save_notes.clicked.connect(self.save_notes)
 
-        btn_email = QPushButton("Send by Email")
-        btn_email.setObjectName("secondaryButton")
 
         close_button = QPushButton("Close")
         close_button.setObjectName("primaryButton")
         close_button.clicked.connect(self.accept)
 
         footer.addWidget(btn_save_notes)
-        footer.addWidget(btn_email)
         footer.addWidget(close_button)
 
         layout.addLayout(footer)
@@ -562,11 +559,17 @@ class AlertsScreen(QWidget):
     
     def show_alert_details(self, alert_id):
         """Open a dialog to display detailed information about a specific alert."""
-        alert = self.alert_service.get_alert(alert_id)
-        if alert:
-            dialog = AlertDetailsDialog(alert, self)
-            dialog.exec_()
-    
+        try:
+            alert = self.alert_service.get_alert(alert_id)
+            if alert:
+                dialog = AlertDetailsDialog(alert, self)
+                dialog.exec_()
+            else:
+                QMessageBox.warning(self, "Warning", "No alert found with the specified ID.")
+        except Exception as e:
+            logger.error(f"Error retrieving alert data: {str(e)}")
+            QMessageBox.critical(self, "Critical Error", "An error occurred while retrieving the alert data. Please try again later.")
+        
     def on_alert_received(self, alert_data):
         """Handle incoming alert data from the ROS bridge."""
         try:
