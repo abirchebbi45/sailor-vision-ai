@@ -12,6 +12,7 @@ load_dotenv("/home/abirc240/Desktop/sailor-vision-ai/sailor_vision_gui/.env")
 from database import get_session, close_session
 from models import User
 from utils import verify_password, generate_token, verify_token, hash_password
+from src.services.user_session import UserSession
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +32,25 @@ class AuthService:
                     "first_name": user.first_name,
                     "last_name": user.last_name,
                     "email": user.email,
-                    "role": user.role,
+                    "role": user.role.value if user.role else "Operator",  # Convert enum to string, default to Operator
+                    "role_enum": user.role,   # Store original enum
                     "profile_picture": user.profile_picture  # Ensure this field is included
                 }
+                
+                # Configure UserSession
+                user_session = UserSession.get_instance()
+                user_session.set_user(user_data)
+                
+                # Si le rôle est None, définir une valeur par défaut
+                if user.role is None:
+                    from models import UserRole
+                    user.role = UserRole.OPERATOR
+                    session.commit()
+                    logger.info(f"Updated null role to OPERATOR for user {user.username}")
+                
                 user.last_login = datetime.now()
                 session.commit()
-                logger.info(f"User authenticated successfully: {email}")
+                logger.info(f"User authenticated successfully: {email} with role {user.role}")
                 return user_data
             else:
                 logger.warning(f"Invalid password for user: {email}")
