@@ -34,6 +34,13 @@ class Permission(Enum):
     VIEW_SETTINGS = "view_settings"
     EDIT_GENERAL_SETTINGS = "edit_general_settings"
     EDIT_SYSTEM_SETTINGS = "edit_system_settings"
+    
+    # Autorisations pour Reports & Logging
+    VIEW_SYSTEM_LOGS = "view_system_logs"           # Voir les logs système
+    VIEW_SERVICE_STATUS = "view_service_status"     # Voir le statut des services
+    EXPORT_LOGS = "export_logs"                     # Exporter les logs
+    CLEAR_LOGS = "clear_logs"                       # Supprimer les anciens logs  
+    EDIT_LOG_CONFIG = "edit_log_config"             # Modifier la configuration des logs
 
 class PermissionService:
     """
@@ -59,7 +66,13 @@ class PermissionService:
             Permission.DELETE_USER,
             Permission.VIEW_SETTINGS,
             Permission.EDIT_GENERAL_SETTINGS,
-            Permission.EDIT_SYSTEM_SETTINGS
+            Permission.EDIT_SYSTEM_SETTINGS,
+            # Reports & Logging - Accès complet pour Administrator
+            Permission.VIEW_SYSTEM_LOGS,
+            Permission.VIEW_SERVICE_STATUS,
+            Permission.EXPORT_LOGS,
+            Permission.CLEAR_LOGS,
+            Permission.EDIT_LOG_CONFIG
         ],
         "Operator": [
             # L'opérateur a accès à un ensemble limité de permissions
@@ -70,6 +83,10 @@ class PermissionService:
             Permission.VIEW_ALERTS,
             Permission.DISMISS_ALERTS,
             Permission.VIEW_SETTINGS,
+            # Reports & Logging - Accès lecture seule pour Operator
+            Permission.VIEW_SYSTEM_LOGS,
+            Permission.VIEW_SERVICE_STATUS,
+            Permission.EXPORT_LOGS  # Permet l'export mais pas la suppression/config
         ]
     }
     
