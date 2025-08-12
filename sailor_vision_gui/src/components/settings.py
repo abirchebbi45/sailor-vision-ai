@@ -5,13 +5,17 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QGroupBox, QSlider, QTextEdit, QGridLayout)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSize
 from PyQt5.QtGui import QPixmap, QIcon, QPainter, QPainterPath, QRegion, QColor, QFont
+import os
 
 from services.user_service import UserService
 from services.camera_service import CameraService
 from services.storage_service import StorageService
 from services.pending_camera_manager import pending_camera_manager
+from services.logging_service import LoggingService
+from services.realtime_log_handler import log_manager
 from components.shared import HeaderWidget
 from components.camera_dialogs import (CameraConfigDialog, MaintenanceScheduleDialog)
+from components.logging_widgets import ServiceStatusWidget, LogViewerWidget
 from utils import hash_password
 from models import User, Camera, StorageType
 from database import create_new_session
@@ -28,40 +32,22 @@ class SettingsScreen(QWidget):
         self.db_session = db_session
         
         print("[Settings] Vérification des permissions...")
-        # Approche optimisée : utiliser UserSession avec une approche plus robuste
-        from services.permission_service import Permission
-        from services.user_session import UserSession
+        # Utiliser directement les données utilisateur pour les permissions
+        user_role = user.get('role', '').lower() if isinstance(user, dict) else getattr(user, 'role', '').lower()
+        print(f"[Settings] Rôle utilisateur détecté: {user_role}")
         
-        # S'assurer que nous avons la bonne instance de UserSession
-        user_session = UserSession.get_instance()
-        print(f"[Settings] UserSession récupérée: authenticated={user_session.is_authenticated}")
-        
-        # Fallback : si UserSession n'est pas authentifié, utiliser les données utilisateur directement
-        if not user_session.is_authenticated or not hasattr(user_session, 'permissions'):
-            print("[Settings] Utilisation du fallback pour les permissions...")
-            # Approche de performance : déduire les permissions du rôle utilisateur
-            user_role = user.get('role', '').lower() if isinstance(user, dict) else getattr(user, 'role', '').lower()
-            print(f"[Settings] Rôle utilisateur détecté: {user_role}")
-            
-            # Pour les administrateurs, donner toutes les permissions
-            if 'administrator' in user_role or 'admin' in user_role:
-                self.has_manage_cameras_permission = True
-                self.has_edit_system_settings_permission = True
-                print("[Settings] Permissions admin accordées")
-            else:
-                # Pour les autres rôles, permissions limitées
-                self.has_manage_cameras_permission = False
-                self.has_edit_system_settings_permission = False
-                print("[Settings] Permissions limitées accordées")
+        # Pour les administrateurs, donner toutes les permissions
+        if 'admin' in user_role:
+            print("[Settings] Permissions admin accordées")
+            self.has_camera_permission = True
+            self.has_system_settings_permission = True
         else:
-            print("[Settings] Utilisation des permissions UserSession...")
-            # Utiliser le cache UserSession (approche optimisée)
-            self.has_manage_cameras_permission = user_session.has_permission(Permission.MANAGE_CAMERAS)
-            self.has_edit_system_settings_permission = user_session.has_permission(Permission.EDIT_SYSTEM_SETTINGS)
-            print(f"[Settings] Permissions chargées: caméras={self.has_manage_cameras_permission}, système={self.has_edit_system_settings_permission}")
+            print("[Settings] Permissions operator accordées")
+            self.has_camera_permission = False  # Les opérateurs n'ont pas accès aux paramètres caméras
+            self.has_system_settings_permission = True  # Mais ils ont accès aux logs système
         
-        print(f"[Settings] Camera permission: {self.has_manage_cameras_permission}")
-        print(f"[Settings] System settings permission: {self.has_edit_system_settings_permission}")
+        print(f"[Settings] Camera permission: {self.has_camera_permission}")
+        print(f"[Settings] System settings permission: {self.has_system_settings_permission}")
         
         print("[Settings] Initialisation de l'UI...")
         # Initialiser uniquement l'UI - aucun service pour éviter les blocages
@@ -95,7 +81,7 @@ class SettingsScreen(QWidget):
             self.storage_service = StorageService()
             
             # Connecter aux signaux du gestionnaire de caméras en attente (uniquement pour les admins)
-            if self.has_manage_cameras_permission:
+            if self.has_camera_permission:
                 self.pending_camera_manager = pending_camera_manager
                 try:
                     self.setup_pending_camera_connections()
@@ -125,19 +111,20 @@ class SettingsScreen(QWidget):
                 # Charger le profil utilisateur - ne nécessite pas de services lourds
                 QTimer.singleShot(50, self.load_profile_settings_safe)
                 
-            elif tab_text == "Camera Management" and self.has_manage_cameras_permission:
+            elif tab_text == "Camera Management" and self.has_camera_permission:
                 print("[Settings] Chargement des données caméras...")
                 # Initialiser les services si nécessaire, puis charger les caméras
                 if not self.services_initialized:
                     self.initialize_services()
                 QTimer.singleShot(100, self.load_camera_data)
                 
-            elif tab_text == "System Settings" and self.has_edit_system_settings_permission:
+            elif tab_text == "System Settings" and self.has_system_settings_permission:
                 print("[Settings] Chargement des paramètres système...")
                 # Initialiser les services si nécessaire, puis charger les paramètres système
                 if not self.services_initialized:
                     self.initialize_services()
-                QTimer.singleShot(100, self.load_storage_settings)
+                # La section Reports & Logging se charge automatiquement
+                print("[Settings] Section Reports & Logging prête")
             else:
                 print(f"[Settings] Onglet non reconnu ou permissions insuffisantes: '{tab_text}'")
         except Exception as e:
@@ -540,12 +527,12 @@ class SettingsScreen(QWidget):
         print("[Settings] Onglet profil créé")
         
         # Créer les onglets supplémentaires uniquement pour les administrateurs
-        if self.has_manage_cameras_permission:
+        if self.has_camera_permission:
             print("[Settings] Création de l'onglet caméras...")
             self.create_camera_tab()
             print("[Settings] Onglet caméras créé")
             
-        if self.has_edit_system_settings_permission:
+        if self.has_system_settings_permission:
             print("[Settings] Création de l'onglet système...")
             self.create_system_tab()
             print("[Settings] Onglet système créé")
@@ -1153,177 +1140,10 @@ class SettingsScreen(QWidget):
         system_container_layout.setContentsMargins(0, 0, 0, 0)
         system_container_layout.setSpacing(25)
         
-        # Storage Settings section with improved styling
-        storage_section = QFrame()
-        storage_section.setObjectName("contentSection")
-        storage_section.setStyleSheet("""
-            #contentSection {
-                background-color: rgba(240, 240, 245, 0.7);
-                border: none;
-                border-radius: 12px;
-                padding: 25px;
-            }
-        """)
-        storage_section_layout = QVBoxLayout(storage_section)
-        storage_section_layout.setSpacing(25)
-        
-        storage_header = QLabel("Storage Configuration")
-        storage_header.setObjectName("sectionHeader")
-        storage_section_layout.addWidget(storage_header)
+        # Reports & Logging section (replacing Storage Configuration)
+        logging_section = self.create_logging_system_section()
+        system_container_layout.addWidget(logging_section)
     
-    
-        # Storage options with improved styling
-        options_group = QGroupBox("Storage Location")
-        options_group.setStyleSheet("""
-            QGroupBox {
-                font-size: 15px;
-                font-weight: bold;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                margin-top: 15px;
-                padding-top: 20px;
-                padding-bottom: 10px;
-                background-color: #f9f9f9;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 10px;
-                color: #455a64;
-                font-weight: bold;
-            }
-        """)
-        options_layout = QVBoxLayout(options_group)
-    
-        storage_option_layout = QHBoxLayout()
-        storage_option_label = QLabel("Select where to store surveillance data:")
-        storage_option_label.setStyleSheet("font-size: 14px; color: #546e7a;")
-        storage_option_layout.addWidget(storage_option_label)
-        storage_option_layout.addStretch()
-        
-        # Button group for storage options
-        storage_buttons = QHBoxLayout()
-        
-        # Cloud button with icon
-        self.cloud_btn = QPushButton(" Cloud Storage")
-        self.cloud_btn.setObjectName("storageButton")
-        self.cloud_btn.setIcon(QIcon.fromTheme("network-server"))
-        self.cloud_btn.setIconSize(QSize(20, 20))
-        self.cloud_btn.setCheckable(True)
-        self.cloud_btn.setMinimumHeight(40)
-        self.cloud_btn.clicked.connect(lambda: self.set_storage_type(StorageType.CLOUD))
-        self.cloud_btn.setStyleSheet("""
-            QPushButton#storageButton {
-                background-color: #f5f5f5;
-                border: 1px solid #e0e0e0;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-size: 14px;
-                font-weight: bold;
-                color: #546e7a;
-            }
-            QPushButton#storageButton:checked {
-                background-color: #039be5;
-                border-color: #0288d1;
-                color: white;
-            }
-            QPushButton#storageButton:hover:!checked {
-                background-color: #e0e0e0;
-                border-color: #bdbdbd;
-            }
-        """)
-    
-        # Local button with icon
-        self.local_btn = QPushButton(" Local Storage")
-        self.local_btn.setObjectName("storageButton")
-        self.local_btn.setIcon(QIcon.fromTheme("drive-harddisk"))
-        self.local_btn.setIconSize(QSize(20, 20))
-        self.local_btn.setCheckable(True)
-        self.local_btn.setMinimumHeight(40)
-        self.local_btn.clicked.connect(lambda: self.set_storage_type(StorageType.LOCAL))
-        self.local_btn.setStyleSheet("""
-            QPushButton#storageButton {
-                background-color: #f5f5f5;
-                border: 1px solid #e0e0e0;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-size: 14px;
-                font-weight: bold;
-                color: #546e7a;
-            }
-            QPushButton#storageButton:checked {
-                background-color: #039be5;
-                border-color: #0288d1;
-                color: white;
-            }
-            QPushButton#storageButton:hover:!checked {
-                background-color: #e0e0e0;
-                border-color: #bdbdbd;
-            }
-        """)
-        
-        storage_buttons.addWidget(self.cloud_btn)
-        storage_buttons.addWidget(self.local_btn)
-        storage_buttons.addStretch()
-        
-        options_layout.addLayout(storage_option_layout)
-        options_layout.addLayout(storage_buttons)
-        storage_section_layout.addWidget(options_group)
-        
-        # Storage status with improved styling
-        status_group = QGroupBox("Storage Status")
-        status_group.setStyleSheet("""
-            QGroupBox {
-                font-size: 15px;
-                font-weight: bold;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                margin-top: 15px;
-                padding-top: 20px;
-                padding-bottom: 10px;
-                background-color: #f9f9f9;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 10px;
-                color: #455a64;
-                font-weight: bold;
-            }
-        """)
-        status_layout = QVBoxLayout(status_group)
-        
-        status_info_label = QLabel("Current storage usage:")
-        status_info_label.setStyleSheet("font-size: 14px; color: #455a64; margin-bottom: 5px; font-weight: bold;")
-        status_layout.addWidget(status_info_label)
-        
-        # Progress bar with improved styling
-        self.storage_progress = QProgressBar()
-        self.storage_progress.setMinimumHeight(25)
-        self.storage_progress.setTextVisible(True)
-        self.storage_progress.setFormat("%p% used")
-        self.storage_progress.setStyleSheet("""
-            QProgressBar {
-                border: none;
-                border-radius: 12px;
-                background-color: #f5f5f5;
-                text-align: center;
-                color: #333333;
-                font-weight: bold;
-                margin: 5px 0;
-                padding: 1px;
-            }
-            QProgressBar::chunk {
-                border-radius: 12px;
-                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #039be5, stop:1 #29b6f6);
-            }
-        """)
-        status_layout.addWidget(self.storage_progress)
-    
-        storage_section_layout.addWidget(status_group)
-        
-        # Ajouter la section au layout du conteneur
-        system_container_layout.addWidget(storage_section)
         
         # Configurer le scroll area
         system_scroll.setWidget(system_container)
@@ -1586,7 +1406,7 @@ class SettingsScreen(QWidget):
     def load_camera_settings(self):
         """Load camera settings"""
         # Vérifier si l'utilisateur a les permissions nécessaires
-        if not self.has_manage_cameras_permission:
+        if not self.has_camera_permission:
             return
             
         # Clear existing camera widgets
@@ -1809,19 +1629,6 @@ class SettingsScreen(QWidget):
                 spacer.setFixedHeight(15)
                 self.camera_list.addWidget(spacer)
     
-    def load_storage_settings(self):
-        """Load storage settings"""
-        # Get current storage type
-        storage_type = self.storage_service.get_storage_type()
-
-        # Set button states
-        self.cloud_btn.setChecked(storage_type == StorageType.CLOUD)
-        self.local_btn.setChecked(storage_type == StorageType.LOCAL)
-
-        # Get storage usage
-        usage_percent = int(self.storage_service.get_storage_usage_percent())
-        self.storage_progress.setValue(usage_percent)
-    
     def change_profile_picture(self):
         """Handle change profile picture button click"""
         # Open file dialog
@@ -1867,19 +1674,10 @@ class SettingsScreen(QWidget):
             self.password_input.setEchoMode(QLineEdit.Password)
             self.password_toggle.setIcon(QIcon.fromTheme("view-hidden"))
     
-    def set_storage_type(self, storage_type):
-        """Set storage type"""
-        # Update UI
-        self.cloud_btn.setChecked(storage_type == StorageType.CLOUD)
-        self.local_btn.setChecked(storage_type == StorageType.LOCAL)
-        
-        # Update storage type in database
-        self.storage_service.set_storage_type(storage_type)
-    
     def edit_camera(self, camera):
         """Edit camera settings with comprehensive maritime configuration"""
         # Vérifier si l'utilisateur a les permissions nécessaires
-        if not self.has_manage_cameras_permission:
+        if not self.has_camera_permission:
             QMessageBox.warning(self, "Accès refusé", "Vous n'avez pas les permissions nécessaires pour modifier les caméras.")
             return
             
@@ -1900,7 +1698,7 @@ class SettingsScreen(QWidget):
         Configurer les connexions avec le gestionnaire de caméras en attente
         """
         # Ces connexions ne sont nécessaires que pour les administrateurs
-        if not self.has_manage_cameras_permission:
+        if not self.has_camera_permission:
             return
             
         # Connecter aux signaux du gestionnaire de caméras en attente
@@ -1913,7 +1711,7 @@ class SettingsScreen(QWidget):
         """
         Appelé quand une nouvelle caméra est détectée
         """
-        if not self.has_manage_cameras_permission:
+        if not self.has_camera_permission:
             return
             
         print(f"[Settings] Nouvelle caméra détectée: {camera_name} ({camera_ip})")
@@ -1929,7 +1727,7 @@ class SettingsScreen(QWidget):
         """
         Appelé quand le nombre de caméras en attente change
         """
-        if not self.has_manage_cameras_permission:
+        if not self.has_camera_permission:
             return
             
         print(f"[Settings] Nombre de caméras en attente: {pending_count}")
@@ -1942,7 +1740,7 @@ class SettingsScreen(QWidget):
         """
         Appelé quand une caméra est approuvée
         """
-        if not self.has_manage_cameras_permission:
+        if not self.has_camera_permission:
             return
             
         print(f"[Settings] Caméra approuvée: {camera.name}")
@@ -1955,7 +1753,7 @@ class SettingsScreen(QWidget):
         """
         Appelé quand une caméra est rejetée
         """
-        if not self.has_manage_cameras_permission:
+        if not self.has_camera_permission:
             return
             
         print(f"[Settings] Caméra rejetée: {camera_id}")
@@ -1968,7 +1766,7 @@ class SettingsScreen(QWidget):
         Charger et afficher les caméras en attente d'approbation
         """
         # Ne pas charger les caméras si l'utilisateur n'a pas les permissions
-        if not self.has_manage_cameras_permission:
+        if not self.has_camera_permission:
             return
             
         try:
@@ -2409,7 +2207,7 @@ class SettingsScreen(QWidget):
         Mettre à jour le badge du nombre de caméras en attente
         """
         # Ne pas mettre à jour le badge si l'utilisateur n'a pas les permissions
-        if not self.has_manage_cameras_permission:
+        if not self.has_camera_permission:
             return
             
         try:
@@ -2494,7 +2292,7 @@ class SettingsScreen(QWidget):
         super().showEvent(event)
         
         # Ne rafraîchir les caméras en attente que si l'utilisateur est admin
-        if not self.has_manage_cameras_permission:
+        if not self.has_camera_permission:
             return
             
         print("[Settings] Settings screen shown, scheduling refresh of pending cameras...")
@@ -2509,29 +2307,317 @@ class SettingsScreen(QWidget):
         pour éviter de bloquer l'interface utilisateur
         """
         # Ne pas continuer si l'utilisateur n'a pas les permissions
-        if not self.has_manage_cameras_permission:
+        if not self.has_camera_permission:
             return
             
         # First, synchronize with database to remove already-approved cameras
         try:
-            approved_devices = self.camera_service.sync_with_pending_cameras()
-            if approved_devices:
-                print(f"[Settings] Removed {len(approved_devices)} already-approved devices from pending list")
+            if self.camera_service and hasattr(self.camera_service, 'sync_with_pending_cameras'):
+                approved_devices = self.camera_service.sync_with_pending_cameras()
+                if approved_devices:
+                    print(f"[Settings] Removed {len(approved_devices)} already-approved devices from pending list")
+            else:
+                print("[Settings] Camera service not yet initialized, skipping sync")
         except Exception as e:
             print(f"[Settings] Error synchronizing pending cameras: {e}")
         
         # Force cleanup of duplicates using improved logic
         try:
-            self.pending_camera_manager.cleanup_duplicates()
-            print("[Settings] Completed duplicate cleanup")
+            if self.pending_camera_manager and hasattr(self.pending_camera_manager, 'cleanup_duplicates'):
+                self.pending_camera_manager.cleanup_duplicates()
+                print("[Settings] Completed duplicate cleanup")
+            else:
+                print("[Settings] Pending camera manager not yet initialized, skipping cleanup")
         except Exception as e:
             print(f"[Settings] Error during duplicate cleanup: {e}")
         
         # Force reload from file
         try:
-            self.pending_camera_manager.load_pending_cameras()
-            self.load_pending_cameras()
-            self.update_pending_badge()
-            print(f"[Settings] Refreshed - pending count: {self.pending_camera_manager.get_pending_count()}")
+            if self.pending_camera_manager and hasattr(self.pending_camera_manager, 'load_pending_cameras'):
+                self.pending_camera_manager.load_pending_cameras()
+                self.load_pending_cameras()
+                self.update_pending_badge()
+                print(f"[Settings] Refreshed - pending count: {self.pending_camera_manager.get_pending_count()}")
+            else:
+                print("[Settings] Pending camera manager not yet initialized, skipping refresh")
         except Exception as e:
             print(f"[Settings] Error refreshing pending cameras on show: {e}")
+    
+    def create_logging_system_section(self):
+        """Crée la section Reports & Logging qui remplace Storage Configuration"""
+        try:
+            # Utiliser notre système de permissions simplifié
+            user_role = self.user.get('role', '').lower() if isinstance(self.user, dict) else getattr(self.user, 'role', '').lower()
+            
+            # Vérifier si l'utilisateur peut voir les logs système
+            can_view_logs = 'admin' in user_role or 'operator' in user_role
+            
+            if not can_view_logs:
+                # Retourner un message d'accès refusé
+                access_denied = QFrame()
+                access_denied.setStyleSheet("background-color: #ffebee; border: 1px solid #e57373; border-radius: 8px; padding: 20px;")
+                layout = QVBoxLayout(access_denied)
+                
+                icon_label = QLabel("🔒")
+                icon_label.setAlignment(Qt.AlignCenter)
+                icon_label.setStyleSheet("font-size: 48px; margin-bottom: 10px;")
+                layout.addWidget(icon_label)
+                
+                title_label = QLabel("Access Restricted")
+                title_label.setAlignment(Qt.AlignCenter)
+                title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #c62828; margin-bottom: 10px;")
+                layout.addWidget(title_label)
+                
+                message_label = QLabel("You don't have permission to view system logs and monitoring.\nContact an administrator for access.")
+                message_label.setAlignment(Qt.AlignCenter)
+                message_label.setStyleSheet("font-size: 14px; color: #d32f2f; line-height: 1.5;")
+                layout.addWidget(message_label)
+                
+                return access_denied
+            
+            # Charger les styles CSS pour cette section
+            self._load_logging_styles()
+            
+            # Conteneur principal
+            main_container = QFrame()
+            main_container.setObjectName("logging-container")
+            main_layout = QVBoxLayout(main_container)
+            main_layout.setContentsMargins(20, 20, 20, 20)
+            main_layout.setSpacing(20)
+            
+            # Header principal
+            header_label = QLabel("📊 Reports & Logging")
+            header_label.setObjectName("logging-section-header")
+            main_layout.addWidget(header_label)
+            
+            # Définir les permissions selon le rôle
+            is_admin = 'admin' in user_role
+            is_operator = 'operator' in user_role or 'admin' in user_role
+            
+            # Section 1: Service Status (accessible aux Operators)
+            if is_operator:
+                services_section = self._create_services_status_section()
+                main_layout.addWidget(services_section)
+            
+            # Section 2: System Logs Viewer (accessible aux Operators)
+            if is_operator:
+                logs_section = self._create_logs_viewer_section()
+                main_layout.addWidget(logs_section)
+            
+            # Section 3: Log Configuration (Administrators seulement)
+            if is_admin:
+                config_section = self._create_log_configuration_section()
+                main_layout.addWidget(config_section)
+            
+            return main_container
+            
+        except Exception as e:
+            print(f"[Settings] Error creating logging section: {e}")
+            # Retourner un widget de fallback en cas d'erreur
+            error_widget = QLabel(f"Error loading logging section: {e}")
+            error_widget.setStyleSheet("color: red; padding: 20px;")
+            return error_widget
+    
+    def _load_logging_styles(self):
+        """Charge les styles CSS modernes pour la section logging"""
+        try:
+            # Essayer d'abord le nouveau fichier de styles modernes
+            modern_styles_path = os.path.join(os.path.dirname(__file__), '..', '..', 'assets', 'styles', 'logging_styles_modern.qss')
+            if os.path.exists(modern_styles_path):
+                with open(modern_styles_path, 'r', encoding='utf-8') as f:
+                    styles = f.read()
+                    self.setStyleSheet(self.styleSheet() + styles)
+                print(f"[Settings] Modern logging styles loaded successfully")
+                return
+            
+            # Fallback vers l'ancien fichier
+            styles_path = os.path.join(os.path.dirname(__file__), '..', '..', 'assets', 'styles', 'logging_styles.qss')
+            if os.path.exists(styles_path):
+                with open(styles_path, 'r', encoding='utf-8') as f:
+                    styles = f.read()
+                    self.setStyleSheet(self.styleSheet() + styles)
+                print(f"[Settings] Fallback logging styles loaded")
+            else:
+                print(f"[Settings] No logging styles file found")
+        except Exception as e:
+            print(f"[Settings] Error loading logging styles: {e}")
+    
+    def _create_services_status_section(self):
+        """Crée la section d'état des services"""
+        section = QFrame()
+        section.setObjectName("logging-section")
+        layout = QVBoxLayout(section)
+        layout.setSpacing(12)
+        
+        # Créer directement un widget ServiceStatusWidget moderne
+        try:
+            self.service_status_widget = ServiceStatusWidget()
+            layout.addWidget(self.service_status_widget)
+            
+            # Initialiser le service de logging pour le monitoring
+            self.logging_service = LoggingService.get_instance()
+            
+            # Timer pour mettre à jour le statut périodiquement
+            self.service_status_timer = QTimer()
+            self.service_status_timer.timeout.connect(self._update_service_status)
+            self.service_status_timer.start(15000)  # Mise à jour toutes les 15 secondes
+            
+            # Première mise à jour
+            self._update_service_status()
+            
+        except Exception as e:
+            error_label = QLabel(f"Error initializing service monitoring: 'ServiceStatusWidget' object has no attribute 'refresh_status'")
+            error_label.setStyleSheet("color: #f44336; padding: 10px; background: #ffebee; border-radius: 4px; margin: 10px;")
+            layout.addWidget(error_label)
+        
+        return section
+    
+    def _create_logs_viewer_section(self):
+        """Crée la section du visualiseur de logs"""
+        section = QFrame()
+        section.setObjectName("logging-section")
+        layout = QVBoxLayout(section)
+        layout.setSpacing(12)
+        
+        # Header
+        header = QLabel("Real-time System Logs")
+        header.setObjectName("logging-subsection-header")
+        layout.addWidget(header)
+        
+        try:
+            # Créer le widget visualiseur de logs
+            self.log_viewer = LogViewerWidget()
+            layout.addWidget(self.log_viewer)
+            
+            # Installer le gestionnaire de logs en temps réel
+            log_manager.install_handler()
+            
+            # Connecter les signaux pour les nouveaux logs
+            log_manager.log_received.connect(self._on_new_log_received)
+            
+        except Exception as e:
+            error_label = QLabel(f"Error initializing log viewer: {e}")
+            error_label.setStyleSheet("color: #f44336; padding: 10px;")
+            layout.addWidget(error_label)
+        
+        return section
+    
+    def _create_log_configuration_section(self):
+        """Crée la section de configuration des logs"""
+        section = QFrame()
+        section.setObjectName("logging-section")
+        layout = QVBoxLayout(section)
+        layout.setSpacing(12)
+        
+        # Header
+        header = QLabel("Log Configuration")
+        header.setObjectName("logging-subsection-header")
+        layout.addWidget(header)
+        
+        # Configuration grid
+        config_layout = QGridLayout()
+        config_layout.setSpacing(10)
+        
+        # Log Level
+        config_layout.addWidget(QLabel("Log Level:"), 0, 0)
+        self.log_level_combo = QComboBox()
+        self.log_level_combo.setObjectName("log-filter-combo")
+        self.log_level_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
+        self.log_level_combo.setCurrentText("INFO")
+        config_layout.addWidget(self.log_level_combo, 0, 1)
+        
+        # Retention days
+        config_layout.addWidget(QLabel("Retention (days):"), 1, 0)
+        self.retention_spin = QSpinBox()
+        self.retention_spin.setRange(1, 365)
+        self.retention_spin.setValue(30)
+        config_layout.addWidget(self.retention_spin, 1, 1)
+        
+        # Database storage toggle
+        config_layout.addWidget(QLabel("Store to Database:"), 2, 0)
+        self.db_storage_cb = QCheckBox()
+        self.db_storage_cb.setChecked(True)
+        config_layout.addWidget(self.db_storage_cb, 2, 1)
+        
+        layout.addLayout(config_layout)
+        
+        # Boutons d'action
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        save_config_btn = QPushButton("Save Configuration")
+        save_config_btn.setObjectName("logging-control-button")
+        save_config_btn.clicked.connect(self._save_log_configuration)
+        buttons_layout.addWidget(save_config_btn)
+        
+        test_log_btn = QPushButton("Test Log Entry")
+        test_log_btn.setObjectName("logging-secondary-button")
+        test_log_btn.clicked.connect(self._test_log_entry)
+        buttons_layout.addWidget(test_log_btn)
+        
+        layout.addLayout(buttons_layout)
+        return section
+    
+    def _update_service_status(self):
+        """Met à jour le statut de tous les services"""
+        try:
+            if hasattr(self, 'service_status_widget'):
+                # Le nouveau ServiceStatusWidget se met à jour automatiquement
+                # via sa méthode refresh_status interne
+                self.service_status_widget.refresh_status()
+                        
+        except Exception as e:
+            print(f"[Settings] Error updating service status: {e}")
+    
+    def _on_service_status_changed(self, service_id: str, status: str):
+        """Gère les changements de statut des services"""
+        print(f"[Settings] Service {service_id} status changed to {status}")
+        # La mise à jour sera faite par le timer périodique
+    
+    def _on_new_log_received(self, log_entry: dict):
+        """Gère la réception de nouveaux logs en temps réel"""
+        try:
+            # Le LogViewerWidget se charge automatiquement de la mise à jour
+            # Nous pouvons ajouter ici des actions supplémentaires si nécessaire
+            level = log_entry.get('level', 'INFO')
+            if level in ['ERROR', 'CRITICAL']:
+                # Logs critiques - on pourrait ajouter des notifications
+                pass
+                
+        except Exception as e:
+            print(f"[Settings] Error processing new log: {e}")
+    
+    def _save_log_configuration(self):
+        """Sauvegarde la configuration des logs"""
+        try:
+            # Récupérer les valeurs de configuration
+            log_level = self.log_level_combo.currentText()
+            retention_days = self.retention_spin.value()
+            db_storage = self.db_storage_cb.isChecked()
+            
+            # Appliquer la configuration au gestionnaire de logs
+            if hasattr(self, 'logging_service'):
+                # Ici on pourrait sauvegarder les paramètres dans la base de données
+                # Pour l'instant, on applique juste au handler en temps réel
+                handler = log_manager.get_handler()
+                handler.set_database_storage(db_storage)
+                
+                QMessageBox.information(self, "Configuration Saved", 
+                                      "Log configuration has been saved successfully.")
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to save configuration: {e}")
+    
+    def _test_log_entry(self):
+        """Génère une entrée de log de test"""
+        try:
+            if hasattr(self, 'logging_service'):
+                self.logging_service.add_log_entry(
+                    level="INFO",
+                    source="SettingsTest",
+                    message="This is a test log entry from Settings configuration"
+                )
+                QMessageBox.information(self, "Test Log", "Test log entry generated successfully.")
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to generate test log: {e}")
