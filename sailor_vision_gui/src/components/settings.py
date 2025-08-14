@@ -24,6 +24,8 @@ from services.user_session import UserSession
 
 class SettingsScreen(QWidget):
     camera_approved_signal = pyqtSignal(dict)  # Signal émis quand une caméra est approuvée
+    camera_updated_signal = pyqtSignal(dict)   # Signal émis quand une caméra est modifiée
+    camera_status_changed_signal = pyqtSignal(dict)  # Signal émis quand le statut d'une caméra change
     
     def __init__(self, user, db_session):
         super().__init__()
@@ -2116,7 +2118,6 @@ class SettingsScreen(QWidget):
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #5BA0F2, stop:1 #4A90E2);
-                transform: translateY(-1px);
             }
             QPushButton:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -2287,7 +2288,22 @@ class SettingsScreen(QWidget):
             success = self.camera_service.update_camera(camera.id, updated_data)
             
             if success:
+                # Recharger l'affichage local
                 self.load_camera_settings()
+                
+                # Émettre le signal pour notifier les autres écrans (Live Feed)
+                updated_camera_dict = {
+                    "id": camera.id,
+                    "name": updated_data.get("name", camera.name),
+                    "ip_address": updated_data.get("ip_address", camera.ip_address),
+                    "location": updated_data.get("location", camera.location),
+                    "is_active": updated_data.get("is_active", camera.is_active),
+                    "rtsp_url": updated_data.get("rtsp_url", camera.rtsp_url),
+                    "port": updated_data.get("port", camera.port)
+                }
+                self.camera_updated_signal.emit(updated_camera_dict)
+                print(f"[Settings] Signal émis pour la caméra modifiée: {updated_camera_dict}")
+                
                 QMessageBox.information(self, "Success", "Camera configuration updated successfully!")
             else:
                 QMessageBox.warning(self, "Error", "Failed to update camera configuration.")
@@ -3418,20 +3434,130 @@ class SettingsScreen(QWidget):
     def toggle_camera_status_simple(self, camera):
         """Toggle camera status for simple camera items"""
         try:
+            # Initialiser les services si nécessaire
+            self.initialize_services()
+            
             if isinstance(camera, dict):
-                # Pour les données statiques, juste afficher un message
+                # Pour les données statiques, juste changer le statut local et recharger
                 current_status = camera.get("status", "inactive")
                 new_status = "inactive" if current_status == "active" else "active"
                 camera["status"] = new_status
+                
+                # Recharger l'interface pour refléter le changement
+                self.load_camera_settings()
                 QMessageBox.information(self, "Camera Status", f"Camera status changed to {new_status}")
             else:
-                # Pour les objets de base de données
-                if hasattr(camera, 'is_active'):
-                    camera.is_active = not camera.is_active
-                    self.db_session.commit()
-                    status_text = "active" if camera.is_active else "inactive"
-                    QMessageBox.information(self, "Camera Status", f"Camera status changed to {status_text}")
+                # Pour les objets de base de données, utiliser le service de caméra
+                if hasattr(camera, 'is_active') and hasattr(camera, 'id'):
+                    new_status = not camera.is_active
+                    
+                    # Utiliser le service de caméra pour la mise à jour
+                    if self.camera_service:
+                        success = self.camera_service.update_camera(camera.id, {"is_active": new_status})
+                        if success:
+                            status_text = "active" if new_status else "inactive"
+                            
+                            # Émettre le signal pour notifier les autres écrans
+                            status_change_dict = {
+                                "id": camera.id,
+                                "name": camera.name,
+                                "is_active": new_status,
+                                "ip_address": camera.ip_address,
+                                "location": camera.location
+                            }
+                            self.camera_status_changed_signal.emit(status_change_dict)
+                            print(f"[Settings] Signal émis pour changement de statut: {status_change_dict}")
+                            
+                            QMessageBox.information(self, "Camera Status", f"Camera status changed to {status_text}")
+                            # Recharger l'interface pour refléter les changements
+                            self.load_camera_settings()
+                        else:
+                            QMessageBox.warning(self, "Error", "Failed to update camera status in database")
+                    else:
+                        # Fallback : mise à jour directe si le service n'est pas disponible
+                        camera.is_active = new_status
+                        self.db_session.commit()
+                        status_text = "active" if new_status else "inactive"
+                        
+                        # Émettre le signal pour notifier les autres écrans
+                        status_change_dict = {
+                            "id": camera.id,
+                            "name": camera.name,
+                            "is_active": new_status,
+                            "ip_address": camera.ip_address,
+                            "location": camera.location
+                        }
+                        self.camera_status_changed_signal.emit(status_change_dict)
+                        print(f"[Settings] Signal émis pour changement de statut (fallback): {status_change_dict}")
+                        
+                        QMessageBox.information(self, "Camera Status", f"Camera status changed to {status_text}")
+                        # Recharger l'interface
+                        self.load_camera_settings()
+                else:
+                    QMessageBox.warning(self, "Error", "Camera object is invalid or missing required attributes")
         except Exception as e:
+            print(f"[Settings] Error in toggle_camera_status_simple: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.warning(self, "Error", f"Failed to change camera status: {e}")
+    
+    def toggle_camera_status(self, camera):
+        """Toggle camera status for database camera objects"""
+        try:
+            # Initialiser les services si nécessaire
+            self.initialize_services()
+            
+            if hasattr(camera, 'is_active') and hasattr(camera, 'id'):
+                new_status = not camera.is_active
+                
+                # Utiliser le service de caméra pour la mise à jour
+                if self.camera_service:
+                    success = self.camera_service.update_camera(camera.id, {"is_active": new_status})
+                    if success:
+                        status_text = "active" if new_status else "inactive"
+                        
+                        # Émettre le signal pour notifier les autres écrans
+                        status_change_dict = {
+                            "id": camera.id,
+                            "name": camera.name,
+                            "is_active": new_status,
+                            "ip_address": camera.ip_address,
+                            "location": camera.location
+                        }
+                        self.camera_status_changed_signal.emit(status_change_dict)
+                        print(f"[Settings] Signal émis pour changement de statut (DB): {status_change_dict}")
+                        
+                        QMessageBox.information(self, "Camera Status", f"Camera status changed to {status_text}")
+                        # Recharger l'interface pour refléter les changements
+                        self.load_camera_settings()
+                    else:
+                        QMessageBox.warning(self, "Error", "Failed to update camera status in database")
+                else:
+                    # Fallback : mise à jour directe si le service n'est pas disponible
+                    camera.is_active = new_status
+                    self.db_session.commit()
+                    status_text = "active" if new_status else "inactive"
+                    
+                    # Émettre le signal pour notifier les autres écrans
+                    status_change_dict = {
+                        "id": camera.id,
+                        "name": camera.name,
+                        "is_active": new_status,
+                        "ip_address": camera.ip_address,
+                        "location": camera.location
+                    }
+                    self.camera_status_changed_signal.emit(status_change_dict)
+                    print(f"[Settings] Signal émis pour changement de statut (DB fallback): {status_change_dict}")
+                    
+                    QMessageBox.information(self, "Camera Status", f"Camera status changed to {status_text}")
+                    # Recharger l'interface
+                    self.load_camera_settings()
+            else:
+                QMessageBox.warning(self, "Error", "Camera object is invalid or missing required attributes")
+        except Exception as e:
+            print(f"[Settings] Error in toggle_camera_status: {e}")
+            import traceback
+            traceback.print_exc()
             QMessageBox.warning(self, "Error", f"Failed to change camera status: {e}")
     
     def configure_camera_simple(self, camera):
