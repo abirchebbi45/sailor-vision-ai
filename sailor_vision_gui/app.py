@@ -528,7 +528,9 @@ class MainWindow(QMainWindow, MainWindowPermissionMixin):
             # Connect signals between settings and live feed
             if self.settings_screen and self.live_feed_screen:
                 self.settings_screen.camera_approved_signal.connect(self.live_feed_screen.refresh_cameras_from_database)
-                logger.info("Connected camera approval signal from settings to live feed")
+                self.settings_screen.camera_updated_signal.connect(self.live_feed_screen.on_camera_updated)
+                self.settings_screen.camera_status_changed_signal.connect(self.live_feed_screen.on_camera_status_changed)
+                logger.info("Connected camera signals from settings to live feed (approved, updated, status changed)")
             
             # Connect watchdog signals to screens
             if hasattr(self, 'ros_watchdog'):
