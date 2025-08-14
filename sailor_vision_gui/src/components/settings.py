@@ -315,100 +315,100 @@ class SettingsScreen(QWidget):
             }
             
             QLabel#pendingDetails {
-                font-size: 13px;
+                font-size: 10px;
                 color: #546e7a;
             }
             
             QPushButton#primaryButton {
-                background-color: #0088cc;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-size: 14px;
-                font-weight: bold;
-                min-width: 120px;
+                background-color: #0088cc !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 6px !important;
+                padding: 10px 20px !important;
+                font-size: 14px !important;
+                font-weight: bold !important;
+                min-width: 120px !important;
             }
             
             QPushButton#primaryButton:hover {
-                background-color: #006699;
+                background-color: #006699 !important;
             }
             
             QPushButton#primaryButton:pressed {
-                background-color: #004466;
+                background-color: #004466 !important;
             }
             
             QPushButton#secondaryButton {
-                background-color: #2196f3;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-size: 13px;
-                font-weight: bold;
-                min-width: 100px;
+                background-color: #2196f3 !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 6px !important;
+                padding: 8px 16px !important;
+                font-size: 13px !important;
+                font-weight: bold !important;
+                min-width: 100px !important;
             }
             
             QPushButton#secondaryButton:hover {
-                background-color: #1976d2;
+                background-color: #1976d2 !important;
             }
             
             QPushButton#secondaryButton:pressed {
-                background-color: #0d47a1;
+                background-color: #0d47a1 !important;
             }
             
             QPushButton#approveButton {
-                background-color: #4caf50;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-size: 13px;
-                font-weight: bold;
+                background-color: #4caf50 !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 6px !important;
+                padding: 8px 16px !important;
+                font-size: 13px !important;
+                font-weight: bold !important;
             }
             
             QPushButton#approveButton:hover {
-                background-color: #43a047;
+                background-color: #43a047 !important;
             }
             
             QPushButton#approveButton:pressed {
-                background-color: #388e3c;
+                background-color: #388e3c !important;
             }
             
             QPushButton#rejectButton {
-                background-color: #f44336;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-size: 13px;
-                font-weight: bold;
+                background-color: #f44336 !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 6px !important;
+                padding: 8px 16px !important;
+                font-size: 13px !important;
+                font-weight: bold !important;
             }
             
             QPushButton#rejectButton:hover {
-                background-color: #e53935;
+                background-color: #e53935 !important;
             }
             
             QPushButton#rejectButton:pressed {
-                background-color: #d32f2f;
+                background-color: #d32f2f !important;
             }
             
             QPushButton#dangerButton {
-                background-color: #f44336;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-size: 13px;
-                font-weight: bold;
+                background-color: #f44336 !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 6px !important;
+                padding: 8px 16px !important;
+                font-size: 13px !important;
+                font-weight: bold !important;
             }
             
             QPushButton#dangerButton:hover {
-                background-color: #e53935;
+                background-color: #e53935 !important;
             }
             
             QPushButton#dangerButton:pressed {
-                background-color: #d32f2f;
+                background-color: #d32f2f !important;
             }
             
             QPushButton#iconButton {
@@ -537,6 +537,25 @@ class SettingsScreen(QWidget):
             
             QTabBar::tab:hover:!selected {
                 background: #e5e5e5;
+            }
+
+            QPushButton#configButton {
+                background-color: #2196f3 !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 6px !important;
+                padding: 8px 16px !important;
+                font-size: 13px !important;
+                font-weight: bold !important;
+                min-width: 100px !important;
+            }
+            
+            QPushButton#configButton:hover {
+                background-color: #1976d2 !important;
+            }
+            
+            QPushButton#configButton:pressed {
+                background-color: #0d47a1 !important;
             }
             """
         )
@@ -882,16 +901,7 @@ class SettingsScreen(QWidget):
         
         info_layout = QVBoxLayout()
         info_layout.setSpacing(5)
-        """ 
-        # Nom de la caméra
-        name_label = QLabel(camera["name"])
-        name_label.setObjectName("pendingName")
-        info_layout.addWidget(name_label)
-        
-        # Type
-        type_label = QLabel(f"Type: {camera['type']}")
-        type_label.setObjectName("pendingDetails")
-        info_layout.addWidget(type_label) """
+
         # Nom de la caméra - compatible avec objets DB et dictionnaires
         camera_name = camera.get("name") if isinstance(camera, dict) else getattr(camera, 'name', 'Unknown')
         name_label = QLabel(camera_name)
@@ -928,18 +938,7 @@ class SettingsScreen(QWidget):
         details_layout = QGridLayout()
         details_layout.setSpacing(10)
         details_layout.setContentsMargins(0, 0, 0, 0)
-        
-        """ # IP Address
-        details_layout.addWidget(QLabel("IP Address:"), 0, 0)
-        ip_label = QLabel(camera["ip"])
-        ip_label.setStyleSheet("color: #546e7a;")
-        details_layout.addWidget(ip_label, 0, 1)
-        
-        # Location
-        details_layout.addWidget(QLabel("Location:"), 0, 2)
-        location_label = QLabel(camera["location"])
-        location_label.setStyleSheet("color: #546e7a;")
-        details_layout.addWidget(location_label, 0, 3) """
+    
 
         # IP Address - compatible avec objets DB et dictionnaires
         details_layout.addWidget(QLabel("IP Address:"), 0, 0)
@@ -972,58 +971,12 @@ class SettingsScreen(QWidget):
         
         main_layout.addLayout(details_layout)
         
-        # Boutons d'action
-        buttons_layout = QHBoxLayout()
-        buttons_layout.setContentsMargins(0, 10, 0, 0)
-        
-        # Bouton Enable
-        enable_btn = QPushButton("▶ Enable")
-        enable_btn.setObjectName("primaryButton")
-        enable_btn.setStyleSheet("""
-            QPushButton#primaryButton {
-                background-color: #0088cc;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-size: 14px;
-                font-weight: bold;
-                min-width: 120px;
-            }
-            QPushButton#primaryButton:hover {
-                background-color: #006699;
-            }
-            QPushButton#primaryButton:pressed {
-                background-color: #004466;
-            }
-        """)
-        buttons_layout.addWidget(enable_btn)
-        
-        buttons_layout.addStretch()
-        
-        # Bouton Delete/Remove
-        delete_btn = QPushButton("🗑")
-        delete_btn.setObjectName("iconButton")
-        delete_btn.setFixedSize(32, 32)
-        delete_btn.setToolTip("Remove Camera")
-        delete_btn.setStyleSheet("""
-            QPushButton#iconButton {
-                border: none;
-                background-color: transparent;
-                border-radius: 16px;
-                font-size: 16px;
-            }
-            QPushButton#iconButton:hover {
-                background-color: #ffebee;
-                color: #f44336;
-            }
-        """)
-        buttons_layout.addWidget(delete_btn)
-        
-        main_layout.addLayout(buttons_layout)
+        # Utiliser la méthode commune pour les boutons
+        buttons_frame = self.create_camera_buttons(camera, is_dict_camera=True)
+        main_layout.addWidget(buttons_frame)
         
         return item_frame
-    
+
     def create_status_badge(self, text, status="inactive"):
         """Créer un badge de statut avec le style approprié"""
         badge = QLabel(text)
@@ -1040,7 +993,7 @@ class SettingsScreen(QWidget):
             background_color = "#6c757d"  # Gris par défaut
             text_color = "white"
         
-        # Appliquer le style directement
+        # Appliquer le style directement avec des dimensions correctes
         badge.setStyleSheet(f"""
             QLabel#statusBadge {{
                 background-color: {background_color};
@@ -1049,15 +1002,13 @@ class SettingsScreen(QWidget):
                 padding: 6px 16px;
                 font-size: 8px;
                 font-weight: bold;
-                width: 20px;
-                height: 10px;
+                width: 10px;
+                height: 8px;
                 text-align: center;
             }}
         """)
         
-        return badge
-        
-        # Forcer l'application du style pour le lazy loading
+        # Forcer l'application du style
         badge.style().unpolish(badge)
         badge.style().polish(badge)
         badge.update()
@@ -2023,7 +1974,7 @@ class SettingsScreen(QWidget):
                 QFrame#cameraCard {
                     background-color: white;
                     border: none;
-                    border-radius: 8px;
+                    border-radius: 12px;
                     padding: 0px;
                 }
                 QFrame#cameraCard:hover {
@@ -2052,14 +2003,14 @@ class SettingsScreen(QWidget):
             
             title = QLabel(camera.name)
             title.setStyleSheet("""
-                font-size: 16px;
+                font-size: 12px;
                 font-weight: bold;
                 color: #333333;
             """)
             title_layout.addWidget(title)
             
             camera_type = QLabel(f"Type: {camera.camera_type or 'Standard'}")
-            camera_type.setStyleSheet("font-size: 12px; color: #757575;")
+
             title_layout.addWidget(camera_type)
             
             header_layout.addLayout(title_layout)
@@ -2123,64 +2074,159 @@ class SettingsScreen(QWidget):
             
             content_layout.addLayout(details_layout)
             
-            # Action buttons in a card-like footer
-            buttons_frame = QFrame()
-            buttons_frame.setStyleSheet("""
-                background-color: #f9f9f9;
-                border-radius: 6px;
-                border: 1px solid #eeeeee;
-            """)
-            buttons_layout = QHBoxLayout(buttons_frame)
-            buttons_layout.setContentsMargins(10, 10, 10, 10)
-            buttons_layout.setSpacing(10)
-            
-            # Primary actions
-            edit_btn = QPushButton("Configure")
-            edit_btn.setObjectName("secondaryButton")
-            edit_btn.setIcon(QIcon.fromTheme("preferences-system"))
-            edit_btn.setToolTip("Configure camera settings")
-            edit_btn.clicked.connect(lambda checked, c=camera: self.edit_camera(c))
-            buttons_layout.addWidget(edit_btn)
-            
-            status_text = "Disable" if camera.is_active else "Enable"
-            status_icon = QIcon.fromTheme("media-playback-pause" if camera.is_active else "media-playback-start")
-            status_btn = QPushButton(status_text)
-            status_btn.setObjectName("toggleButton")
-            status_btn.setIcon(status_icon)
-            status_btn.setToolTip("Toggle camera status")
-            status_btn.clicked.connect(lambda checked, c=camera: self.toggle_camera_status(c))
-            buttons_layout.addWidget(status_btn)
-            
-            # Monitoring operations
-            test_btn = QPushButton("Test")
-            test_btn.setObjectName("secondaryButton")
-            test_btn.setIcon(QIcon.fromTheme("network-wireless"))
-            test_btn.setToolTip("Test connectivity")
-            test_btn.clicked.connect(lambda checked, c=camera: self.test_camera_connectivity(c))
-            buttons_layout.addWidget(test_btn)
-            
-            # Maintenance operations
-            maintenance_btn = QPushButton("Maintenance")
-            maintenance_btn.setObjectName("secondaryButton")
-            maintenance_btn.setIcon(QIcon.fromTheme("applications-system"))
-            maintenance_btn.setToolTip("Schedule maintenance")
-            maintenance_btn.clicked.connect(lambda checked, c=camera: self.schedule_camera_maintenance(c))
-            buttons_layout.addWidget(maintenance_btn)
-            
-            buttons_layout.addStretch()
-            
-            # Delete operation
-            delete_btn = QPushButton("Delete")
-            delete_btn.setObjectName("dangerButton")
-            delete_btn.setIcon(QIcon.fromTheme("edit-delete"))
-            delete_btn.setToolTip("Delete camera")
-            delete_btn.clicked.connect(lambda checked, c=camera: self.delete_camera(c))
-            buttons_layout.addWidget(delete_btn)
-            
+            # Utiliser la méthode commune pour les boutons
+            buttons_frame = self.create_camera_buttons(camera, is_dict_camera=False)
             content_layout.addWidget(buttons_frame)
+            
             layout.addWidget(content_frame)
             
             self.camera_list.addWidget(camera_item)
+    
+    def create_camera_buttons(self, camera, is_dict_camera=False):
+        """
+        Créer les boutons d'action pour une caméra avec un style moderne et raffiné
+        """
+        # Frame conteneur avec style moderne
+        buttons_frame = QFrame()
+        buttons_frame.setStyleSheet("""
+            background-color: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            padding: 8px;
+        """)
+        buttons_layout = QHBoxLayout(buttons_frame)
+        buttons_layout.setContentsMargins(8, 8, 8, 8)
+        buttons_layout.setSpacing(6)
+        
+        # 1. BOUTON CONFIGURE - Style moderne bleu
+        config_btn = QPushButton("Configure")
+        config_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #4A90E2, stop:1 #357ABD);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 4px 8px;
+                font-size: 10px;
+                font-weight: bold;
+                min-width: 30px;
+                min-height: 28px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #5BA0F2, stop:1 #4A90E2);
+                transform: translateY(-1px);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #357ABD, stop:1 #2C6AA0);
+            }
+        """)
+        
+        if is_dict_camera:
+            config_btn.clicked.connect(lambda: self.configure_camera_simple(camera))
+        else:
+            config_btn.clicked.connect(lambda checked, c=camera: self.edit_camera(c))
+        buttons_layout.addWidget(config_btn)
+        
+        # 2. BOUTON STATUS TOGGLE - Style moderne vert/orange
+        if is_dict_camera:
+            status_text = "Disable" if camera.get("status") == "active" else "Enable"
+            is_active = camera.get("status") == "active"
+        else:
+            status_text = "Disable" if camera.is_active else "Enable"
+            is_active = camera.is_active
+        
+        status_btn = QPushButton(status_text)
+        
+        if is_active:
+            # Style pour Disable (orange)
+            status_btn.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #FF9500, stop:1 #E8860C);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 4px 8px;
+                    font-size: 10px;
+                    font-weight: bold;
+                    min-width: 30px;
+                    min-height: 28px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #FFA500, stop:1 #FF9500);
+                }
+                QPushButton:pressed {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #E8860C, stop:1 #D1770A);
+                }
+            """)
+        else:
+            # Style pour Enable (vert)
+            status_btn.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #34C759, stop:1 #28A745);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 4px 8px;
+                    font-size: 10px;
+                    font-weight: bold;
+                    min-width: 30px;
+                    min-height: 28px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #44D769, stop:1 #34C759);
+                }
+                QPushButton:pressed {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #28A745, stop:1 #1E7E34);
+                }
+            """)
+        
+        if is_dict_camera:
+            status_btn.clicked.connect(lambda: self.toggle_camera_status_simple(camera))
+        else:
+            status_btn.clicked.connect(lambda checked, c=camera: self.toggle_camera_status(c))
+        buttons_layout.addWidget(status_btn)
+        
+        # 4. BOUTON DELETE - Style rouge moderne
+        delete_btn = QPushButton("Delete")
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #FF3B30, stop:1 #D70015);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 4px 8px;
+                font-size: 10px;
+                font-weight: bold;
+                min-width: 30px;
+                min-height: 28px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #FF5B50, stop:1 #FF3B30);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #D70015, stop:1 #B80012);
+            }
+        """)
+        
+        if is_dict_camera:
+            delete_btn.clicked.connect(lambda: self.delete_camera_simple(camera))
+        else:
+            delete_btn.clicked.connect(lambda checked, c=camera: self.delete_camera(c))
+        buttons_layout.addWidget(delete_btn)
+        
+        return buttons_frame
     
     def change_profile_picture(self):
         """Handle change profile picture button click"""
@@ -3368,3 +3414,46 @@ class SettingsScreen(QWidget):
             
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to generate test log: {e}")
+    
+    def toggle_camera_status_simple(self, camera):
+        """Toggle camera status for simple camera items"""
+        try:
+            if isinstance(camera, dict):
+                # Pour les données statiques, juste afficher un message
+                current_status = camera.get("status", "inactive")
+                new_status = "inactive" if current_status == "active" else "active"
+                camera["status"] = new_status
+                QMessageBox.information(self, "Camera Status", f"Camera status changed to {new_status}")
+            else:
+                # Pour les objets de base de données
+                if hasattr(camera, 'is_active'):
+                    camera.is_active = not camera.is_active
+                    self.db_session.commit()
+                    status_text = "active" if camera.is_active else "inactive"
+                    QMessageBox.information(self, "Camera Status", f"Camera status changed to {status_text}")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to change camera status: {e}")
+    
+    def configure_camera_simple(self, camera):
+        """Configure camera for simple camera items"""
+        try:
+            camera_name = camera.get("name") if isinstance(camera, dict) else getattr(camera, 'name', 'Unknown')
+            QMessageBox.information(self, "Configure Camera", f"Configuration dialog for {camera_name} would open here.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to configure camera: {e}")
+    
+    def delete_camera_simple(self, camera):
+        """Delete camera for simple camera items"""
+        try:
+            camera_name = camera.get("name") if isinstance(camera, dict) else getattr(camera, 'name', 'Unknown')
+            reply = QMessageBox.question(
+                self, 
+                "Confirm Delete", 
+                f"Are you sure you want to delete camera '{camera_name}'?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                QMessageBox.information(self, "Delete Camera", f"Camera {camera_name} would be deleted.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to delete camera: {e}")
