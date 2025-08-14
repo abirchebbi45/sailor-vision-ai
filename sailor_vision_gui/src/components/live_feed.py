@@ -752,6 +752,72 @@ class LiveFeedScreen(QWidget):
             import traceback
             traceback.print_exc()
 
+    def on_camera_updated(self, updated_camera_dict):
+        """
+        Gestionnaire appelé quand une caméra est modifiée depuis Settings
+        """
+        try:
+            camera_id = updated_camera_dict.get("id")
+            logger.info(f"[LiveFeed] Camera updated signal received for camera {camera_id}: {updated_camera_dict}")
+            
+            # Mettre à jour la caméra dans la liste locale
+            for i, camera in enumerate(self.cameras):
+                if camera.get("id") == camera_id:
+                    # Mettre à jour les données de la caméra
+                    self.cameras[i].update(updated_camera_dict)
+                    logger.info(f"[LiveFeed] Updated camera data in local list: {self.cameras[i]}")
+                    break
+            
+            # Aussi mettre à jour la liste filtrée si elle existe
+            for i, camera in enumerate(self.filtered_cameras):
+                if camera.get("id") == camera_id:
+                    self.filtered_cameras[i].update(updated_camera_dict)
+                    break
+            
+            # Recharger l'affichage pour refléter les changements
+            self.load_cameras(self.filtered_cameras)
+            logger.info(f"[LiveFeed] UI refreshed after camera update")
+            
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error handling camera update: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def on_camera_status_changed(self, status_change_dict):
+        """
+        Gestionnaire appelé quand le statut d'une caméra change depuis Settings
+        """
+        try:
+            camera_id = status_change_dict.get("id")
+            new_status = status_change_dict.get("is_active")
+            logger.info(f"[LiveFeed] Camera status changed signal received for camera {camera_id}: active={new_status}")
+            
+            # Mettre à jour le statut dans la liste locale
+            for i, camera in enumerate(self.cameras):
+                if camera.get("id") == camera_id:
+                    self.cameras[i]["is_active"] = new_status
+                    logger.info(f"[LiveFeed] Updated camera status in local list: {self.cameras[i]}")
+                    break
+            
+            # Aussi mettre à jour la liste filtrée
+            for i, camera in enumerate(self.filtered_cameras):
+                if camera.get("id") == camera_id:
+                    self.filtered_cameras[i]["is_active"] = new_status
+                    break
+            
+            # Mettre à jour le widget spécifique si il existe
+            if camera_id in self.camera_widgets:
+                widget = self.camera_widgets[camera_id]
+                if hasattr(widget, 'camera'):
+                    widget.camera["is_active"] = new_status
+                    widget.update_status_indicator()
+                    logger.info(f"[LiveFeed] Updated status indicator for camera widget {camera_id}")
+                    
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error handling camera status change: {e}")
+            import traceback
+            traceback.print_exc()
+
     def refresh_cameras_from_database(self, approved_camera_dict=None):
         """
         Rafraîchir les caméras depuis la base de données après l'approbation d'une nouvelle caméra.
