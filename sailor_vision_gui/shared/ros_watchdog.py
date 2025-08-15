@@ -5,6 +5,7 @@ import rclpy
 from rclpy.node import Node
 from database import get_session, create_new_session, close_session
 from src.services.camera_service import CameraService
+from models import Camera
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +157,10 @@ class ROSWatchdogWorker(QObject):
             logger.error(f"Error updating cameras to inactive: {e}")
 
     def update_camera_status(self):
-        """Check topic activity and update camera status based on video feed availability"""
+        """
+        Check topic activity and update camera status based on video feed availability
+        Implements maritime-aware logic that respects manual activations
+        """
         if not self.ros_connected:
             return
             
@@ -164,59 +168,101 @@ class ROSWatchdogWorker(QObject):
         changed_cameras = []
         
         try:
+            # Get fresh camera data from database to check for recent manual changes
+            session = create_new_session()
+            camera_service = CameraService(session)
+            
             # Check each camera's topic activity
             for camera_id in self.camera_active_status.keys():
-                # Find topics for this camera
-                camera_topics = [topic for topic, cam_id in self.topic_to_camera_id.items() if cam_id == camera_id]
-                
-                # Check if any topic for this camera has recent activity
-                has_recent_activity = False
-                last_activity_time = 0
-                
-                for topic in camera_topics:
-                    topic_last_activity = self.camera_topics.get(topic, 0)
-                    if topic_last_activity > 0:  # Has had activity at some point
-                        time_since_activity = current_time - topic_last_activity
-                        if time_since_activity < self.topic_timeout:
-                            has_recent_activity = True
-                            last_activity_time = max(last_activity_time, topic_last_activity)
-                
-                # Determine if camera should be active
-                should_be_active = has_recent_activity
-                current_status = self.camera_active_status.get(camera_id, False)
-                
-                # If status should change
-                if should_be_active != current_status:
-                    self.camera_active_status[camera_id] = should_be_active
-                    changed_cameras.append(camera_id)
+                try:
+                    # Get current database status
+                    camera = session.query(Camera).filter(Camera.id == camera_id).first()
+                    if not camera:
+                        continue
                     
-                    if should_be_active:
-                        logger.info(f"Camera {camera_id} activated (video feed detected)")
-                    else:
-                        time_since = current_time - last_activity_time if last_activity_time > 0 else 999
-                        logger.info(f"Camera {camera_id} deactivated (no feed for {time_since:.1f}s)")
+                    # Find topics for this camera
+                    camera_topics = [topic for topic, cam_id in self.topic_to_camera_id.items() if cam_id == camera_id]
+                    
+                    # Check if any topic for this camera has recent activity
+                    has_recent_activity = False
+                    last_activity_time = 0
+                    
+                    for topic in camera_topics:
+                        topic_last_activity = self.camera_topics.get(topic, 0)
+                        if topic_last_activity > 0:  # Has had activity at some point
+                            time_since_activity = current_time - topic_last_activity
+                            if time_since_activity < self.topic_timeout:
+                                has_recent_activity = True
+                                last_activity_time = max(last_activity_time, topic_last_activity)
+                    
+                    # Maritime Logic: Be more conservative about deactivating cameras
+                    current_watchdog_status = self.camera_active_status.get(camera_id, False)
+                    database_status = camera.is_active
+                    
+                    # If camera was manually activated recently, be more tolerant of feed loss
+                    extended_timeout = self.topic_timeout * 2  # 10 seconds instead of 5
+                    
+                    should_be_active = current_watchdog_status  # Default to current status
+                    
+                    if database_status and not current_watchdog_status:
+                        # Camera was activated outside of watchdog - respect manual activation
+                        logger.info(f"[Watchdog] Camera {camera_id} manually activated - updating watchdog status")
+                        should_be_active = True
+                    elif has_recent_activity and not current_watchdog_status:
+                        # Camera has feed activity - activate it
+                        should_be_active = True
+                        logger.info(f"[Watchdog] Camera {camera_id} feed detected - activating")
+                    elif not has_recent_activity and database_status and current_watchdog_status:
+                        # Camera is active but no recent feed - check if should deactivate
+                        time_since_last = current_time - last_activity_time if last_activity_time > 0 else 0
+                        
+                        # If camera never had activity (last_activity_time = 0), it might be manually activated
+                        if last_activity_time == 0:
+                            # For manually activated cameras without feed, be very tolerant
+                            should_be_active = True  # Keep manually activated cameras active
+                            logger.debug(f"[Watchdog] Camera {camera_id} manually activated without ROS feed - keeping active")
+                        else:
+                            # Camera had feed before, use extended timeout
+                            should_deactivate = time_since_last > extended_timeout
+                            if should_deactivate:
+                                should_be_active = False
+                                logger.info(f"[Watchdog] 🚢 Maritime Timeout: Camera {camera_id} feed lost for {time_since_last:.1f}s - deactivating")
+                            else:
+                                should_be_active = True  # Keep active during grace period
+                                logger.debug(f"[Watchdog] Camera {camera_id} in grace period ({time_since_last:.1f}s/{extended_timeout}s)")
+                    
+                    # Update status if changed
+                    if should_be_active != current_watchdog_status:
+                        self.camera_active_status[camera_id] = should_be_active
+                        changed_cameras.append(camera_id)
+                        
+                        if should_be_active:
+                            logger.info(f"[Watchdog] Camera {camera_id} activated (video feed detected)")
+                        else:
+                            time_since = current_time - last_activity_time if last_activity_time > 0 else 999
+                            logger.info(f"[Watchdog] Camera {camera_id} deactivated (no feed for {time_since:.1f}s)")
+                
+                except Exception as e:
+                    logger.error(f"[Watchdog] Error processing camera {camera_id}: {e}")
             
             # Update database and emit signals if there are changes
             if changed_cameras:
-                session = create_new_session()
-                camera_service = CameraService(session)
-                
                 # Group by new status
                 active_cameras = [cam_id for cam_id in changed_cameras if self.camera_active_status[cam_id]]
                 inactive_cameras = [cam_id for cam_id in changed_cameras if not self.camera_active_status[cam_id]]
                 
                 if active_cameras:
                     camera_service.set_cameras_active(active_cameras, True)
-                    logger.info(f"Set {len(active_cameras)} cameras as active: {active_cameras}")
+                    logger.info(f"[Watchdog] Set {len(active_cameras)} cameras as active: {active_cameras}")
                 
                 if inactive_cameras:
                     camera_service.set_cameras_active(inactive_cameras, False)
-                    logger.info(f"Set {len(inactive_cameras)} cameras as inactive: {inactive_cameras}")
-                
-                close_session(session)
+                    logger.info(f"[Watchdog] Set {len(inactive_cameras)} cameras as inactive: {inactive_cameras}")
                 
                 # Emit signal with all changed camera IDs
                 self.cameras_status_changed.emit(changed_cameras)
+            
+            close_session(session)
         
         except Exception as e:
             logger.error(f"Error updating camera status: {e}")
