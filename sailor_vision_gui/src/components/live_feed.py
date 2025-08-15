@@ -13,7 +13,8 @@ from time import time
 from src.services.camera_service import CameraService
 from src.services.pending_camera_manager import pending_camera_manager
 from src.services.camera_detector import camera_detector  # Import the new camera detector service
-from database import get_session, create_new_session
+from database import get_session, create_new_session, close_session
+from models import Camera
 
 import logging
 import json
@@ -141,28 +142,125 @@ class CameraFeedWidget(QFrame):
                     Qt.KeepAspectRatio,
                     Qt.SmoothTransformation
                 ))
-                self.set_feed_active(True)
+                # Only set feed active if camera is also active in database
+                if self.camera.get("is_active", False):
+                    self.set_feed_active(True)
+                else:
+                    self.set_feed_active(False)
             else:
                 self.set_feed_active(False)
         else:
+            # No image path - display appropriate message based on camera status
+            self.display_status_message()
             self.set_feed_active(False)
 
     def set_feed_active(self, active: bool):
         self.feed_active = active
-        self.camera["is_active"] = active
+        # NOTE: Ne modifie PAS le statut de la caméra en base
+        # Le statut DB est géré séparément par auto_activate_camera_on_feed() ou Settings
         self.update_status_indicator()
         if not active:
-            self.feed_label.setText("No available live feed")
-            self.feed_label.setStyleSheet("color: white; font-size: 14px; background-color: #1a1a1a; border-radius: 8px;")
+            # Display appropriate message based on camera and feed status
+            self.display_status_message()
             self.current_pixmap = None
+
+    def display_status_message(self, custom_message=None, message_type=None):
+        """
+        Display appropriate message based on camera status and feed availability
+        Professional maritime surveillance messages
+        
+        Args:
+            custom_message (str, optional): Custom message to display
+            message_type (str, optional): Type of message ('success', 'warning', 'error')
+        """
+        if custom_message:
+            # Display custom message with appropriate styling
+            if message_type == "success":
+                color = "#4CAF50"  # Green
+                icon = "✅"
+            elif message_type == "warning":
+                color = "#FF9800"  # Orange
+                icon = "⚠️"
+            elif message_type == "error":
+                color = "#FF5252"  # Red
+                icon = "❌"
+            else:
+                color = "#2196F3"  # Blue (default)
+                icon = "ℹ️"
+            
+            self.feed_label.setText(f"{icon} {custom_message}")
+            self.feed_label.setStyleSheet(f"""
+                color: {color}; 
+                font-size: 13px; 
+                font-weight: bold;
+                background-color: #1a1a1a; 
+                border-radius: 8px;
+                text-align: center;
+                padding: 20px;
+            """)
+            return
+        
+        # Default behavior - determine message based on camera state
+        db_active = self.camera.get("is_active", False)
+        feed_active = self.feed_active
+        
+        if not db_active:
+            # Camera disabled by administrator
+            self.feed_label.setText("🚫 Camera Disabled\nby Administrator")
+            self.feed_label.setStyleSheet("""
+                color: #FF5252; 
+                font-size: 13px; 
+                font-weight: bold;
+                background-color: #1a1a1a; 
+                border-radius: 8px;
+                text-align: center;
+                padding: 20px;
+            """)
+        elif db_active and not feed_active:
+            # Camera authorized but no feed received
+            self.feed_label.setText("⏳ Waiting for Live Feed...\nCamera Online")
+            self.feed_label.setStyleSheet("""
+                color: #FF9800; 
+                font-size: 13px; 
+                font-weight: bold;
+                background-color: #1a1a1a; 
+                border-radius: 8px;
+                text-align: center;
+                padding: 20px;
+            """)
+        else:
+            # Default fallback
+            self.feed_label.setText("📷 No Feed Available")
+            self.feed_label.setStyleSheet("""
+                color: #9E9E9E; 
+                font-size: 13px; 
+                background-color: #1a1a1a; 
+                border-radius: 8px;
+                text-align: center;
+                padding: 20px;
+            """)
 
     def update_status_indicator(self):
         """
-        Updates the status indicator based on the camera's is_active field.
+        Updates the status indicator based on BOTH camera status and feed status
+        Professional maritime surveillance logic:
+        - Green: Camera active + feed available
+        - Orange: Camera active + no feed  
+        - Red: Camera inactive (disabled by admin)
         """
-        is_active = self.camera.get("is_active", False)
-        status_color = "#4CAF50" if is_active else "#FF5252"
-        status_text = "Active" if is_active else "Inactive"
+        db_active = self.camera.get("is_active", False)  # Status from database
+        feed_active = self.feed_active                   # Status from ROS feed
+        
+        if db_active and feed_active:
+            status_color = "#4CAF50"  # Green: Camera active + feed OK
+            status_text = "Live"
+        elif db_active and not feed_active:
+            status_color = "#FF9800"  # Orange: Camera active + no feed
+            status_text = "No Feed"
+        else:
+            status_color = "#FF5252"  # Red: Camera disabled by admin
+            status_text = "Disabled"
+            
         self.status_indicator.setText(
             f'<span style="color: {status_color}; font-size: 14px;">●</span> '
             f'<span style="color: white; font-size: 12px; text-shadow: 1px 1px 3px rgba(0,0,0,1);">{status_text}</span>'
@@ -257,8 +355,8 @@ class ExpandedCameraWidget(QWidget):
         if self.pixmap and not self.pixmap.isNull():
             self.update_feed(self.pixmap)
         else:
-            self.feed_container.setText("No feed available")
-            self.feed_container.setStyleSheet("background-color: #313131; color: white;")
+            # Use same status message logic as CameraFeedWidget
+            self.display_expanded_status_message()
         
         layout.addWidget(self.feed_container)
         
@@ -282,6 +380,65 @@ class ExpandedCameraWidget(QWidget):
                 background-color: #D32F2F;
             }
         """)
+    
+    def display_expanded_status_message(self):
+        """
+        Display appropriate status message in expanded view
+        Uses same logic as CameraFeedWidget for consistency
+        """
+        if not self.camera_data:
+            self.feed_container.setText("📷 Camera Data Unavailable")
+            self.feed_container.setStyleSheet("""
+                background-color: #313131; 
+                color: #9E9E9E; 
+                font-size: 16px;
+                text-align: center;
+                padding: 40px;
+            """)
+            return
+            
+        db_active = self.camera_data.get("is_active", False)
+        
+        if not db_active:
+            # Camera disabled by administrator
+            self.feed_container.setText("""
+🚫 Camera Disabled by Administrator
+
+This camera has been disabled for maintenance
+or security purposes. Contact your system
+administrator to re-enable the camera.
+            """.strip())
+            self.feed_container.setStyleSheet("""
+                background-color: #2d1b1b; 
+                color: #FF5252; 
+                font-size: 16px; 
+                font-weight: bold;
+                text-align: center;
+                padding: 40px;
+                border: 2px solid #FF5252;
+                border-radius: 8px;
+            """)
+        else:
+            # Camera authorized but no feed received
+            self.feed_container.setText("""
+⏳ Waiting for Live Feed...
+
+Camera Status: Online & Authorized
+System is attempting to establish
+connection with the camera feed.
+
+Please wait while the system connects...
+            """.strip())
+            self.feed_container.setStyleSheet("""
+                background-color: #2d2519; 
+                color: #FF9800; 
+                font-size: 16px; 
+                font-weight: bold;
+                text-align: center;
+                padding: 40px;
+                border: 2px solid #FF9800;
+                border-radius: 8px;
+            """)
     
     def update_feed(self, pixmap):
         """
@@ -415,6 +572,7 @@ class LiveFeedScreen(QWidget):
         """
         Handle image received from ROS bridge
         Convert to pixmap and update corresponding camera feed
+        ONLY processes feeds from ACTIVE cameras
         """
         try:
             # Convert CV image to QPixmap
@@ -428,17 +586,169 @@ class LiveFeedScreen(QWidget):
             # Find camera ID for this topic
             camera_id = self.topic_to_camera_id.get(topic)
             if camera_id:
-                # Update camera feed
-                success = self.update_camera_feed(camera_id, pixmap)
-                if success:
-                    logger.debug(f"[LiveFeed] Updated camera {camera_id} from topic {topic}")
+                # SECURITY CHECK: Only process feeds from ACTIVE cameras
+                camera_data = None
+                for cam in self.cameras:
+                    if cam.get("id") == camera_id:
+                        camera_data = cam
+                        break
+                
+                if camera_data and camera_data.get("is_active", False):
+                    # Camera is authorized - process the feed
+                    success = self.update_camera_feed(camera_id, pixmap)
+                    if success:
+                        logger.debug(f"[LiveFeed] ✅ Updated authorized camera {camera_id} from topic {topic}")
+                        
+                        # Auto-activate camera in database if first feed received
+                        self.auto_activate_camera_on_feed(camera_id)
+                    else:
+                        logger.warning(f"[LiveFeed] Failed to update camera {camera_id} from topic {topic}")
                 else:
-                    logger.warning(f"[LiveFeed] Failed to update camera {camera_id} from topic {topic}")
+                    logger.warning(f"[LiveFeed] 🚫 Blocked feed from INACTIVE camera {camera_id} on topic {topic}")
             else:
                 logger.debug(f"[LiveFeed] No camera mapping found for topic {topic}")
                 
         except Exception as e:
             logger.error(f"[LiveFeed] Error processing ROS image from {topic}: {e}")
+
+    def handle_watchdog_status_change(self, camera_ids):
+        """
+        Handle camera status changes from ROS Watchdog with maritime logic
+        Implements intelligent synchronization between watchdog and maritime auto-activation
+        """
+        try:
+            logger.info(f"[LiveFeed] 🔄 Processing watchdog status changes for cameras: {camera_ids}")
+            
+            # Reload cameras from database to get latest status
+            session = create_new_session()
+            camera_service = CameraService(session)
+            updated_cameras = []
+            
+            for camera_id in camera_ids:
+                try:
+                    # Get fresh camera data from database
+                    camera = session.query(Camera).filter(Camera.id == camera_id).first()
+                    if not camera:
+                        logger.warning(f"[LiveFeed] Camera {camera_id} not found in database")
+                        continue
+                    
+                    # Update local camera data
+                    for local_cam in self.cameras:
+                        if local_cam.get("id") == camera_id:
+                            local_cam["is_active"] = camera.is_active
+                            updated_cameras.append((camera_id, camera.is_active))
+                            
+                            # Update UI widget if exists
+                            if camera_id in self.camera_widgets:
+                                widget = self.camera_widgets[camera_id]
+                                widget.camera["is_active"] = camera.is_active
+                                widget.update_status_indicator()
+                                
+                                # Maritime logic: If camera was deactivated by watchdog but still has feed,
+                                # show appropriate status message
+                                if not camera.is_active and widget.feed_active:
+                                    widget.display_status_message(
+                                        custom_message=f"🚢 Maritime Alert: Camera {camera.name} feed lost - Monitoring discontinued",
+                                        message_type="warning"
+                                    )
+                                elif camera.is_active and widget.feed_active:
+                                    widget.display_status_message(
+                                        custom_message=f"🚢 Maritime Surveillance: Camera {camera.name} operational",
+                                        message_type="success"
+                                    )
+                            break
+                            
+                except Exception as e:
+                    logger.error(f"[LiveFeed] Error processing camera {camera_id}: {e}")
+                    
+            close_session(session)
+            
+            if updated_cameras:
+                logger.info(f"[LiveFeed] ✅ Updated {len(updated_cameras)} cameras from watchdog: {updated_cameras}")
+                
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error handling watchdog status change: {e}")
+
+    def auto_activate_camera_on_feed(self, camera_id):
+        """
+        Auto-activate camera in database when it starts receiving feed
+        Simulates professional maritime surveillance behavior with intelligent conflict resolution
+        """
+        try:
+            # Check if camera is already active
+            camera_data = None
+            for cam in self.cameras:
+                if cam.get("id") == camera_id:
+                    camera_data = cam
+                    break
+            
+            if not camera_data:
+                logger.error(f"[LiveFeed] Camera {camera_id} not found for auto-activation")
+                return
+            
+            if camera_data.get("is_active", False):
+                # Camera already active, just update feed status
+                if camera_id in self.camera_widgets:
+                    widget = self.camera_widgets[camera_id]
+                    widget.set_feed_active(True)
+                    # Display maritime status for active camera receiving feed
+                    widget.display_status_message(
+                        custom_message=f"🚢 Maritime Surveillance: Camera {camera_data.get('name')} feed confirmed",
+                        message_type="success"
+                    )
+                return
+            
+            logger.info(f"[LiveFeed] 🔄 Maritime Auto-Activation: Camera {camera_id} ({camera_data.get('name')}) receiving feed")
+            
+            # Verify with fresh database data to avoid watchdog conflicts
+            session = create_new_session()
+            try:
+                fresh_camera = session.query(Camera).filter(Camera.id == camera_id).first()
+                if not fresh_camera:
+                    logger.error(f"[LiveFeed] Camera {camera_id} not found in database")
+                    return
+                
+                # If camera was recently deactivated by watchdog (within last 10 seconds), 
+                # this is likely a feed restoration - proceed with auto-activation
+                current_time = time()
+                should_auto_activate = not fresh_camera.is_active
+                
+                if should_auto_activate:
+                    # Update database through camera service
+                    if self.camera_service:
+                        success = self.camera_service.update_camera(camera_id, {"is_active": True})
+                        if success:
+                            # Update local data
+                            camera_data["is_active"] = True
+                            
+                            # Update UI widget
+                            if camera_id in self.camera_widgets:
+                                widget = self.camera_widgets[camera_id]
+                                widget.camera["is_active"] = True
+                                widget.set_feed_active(True)
+                                widget.update_status_indicator()
+                                
+                                # Display maritime success message on the widget
+                                widget.display_status_message(
+                                    custom_message=f"🚢 Maritime Alert: Camera {camera_data.get('name')} auto-activated - Surveillance resumed",
+                                    message_type="success"
+                                )
+                            
+                            logger.info(f"[LiveFeed] ✅ Maritime Auto-Activation successful: Camera {camera_id}")
+                        else:
+                            logger.error(f"[LiveFeed] ❌ Failed to auto-activate camera {camera_id} in database")
+                    else:
+                        logger.error(f"[LiveFeed] Camera service not available for auto-activation")
+                else:
+                    logger.debug(f"[LiveFeed] Camera {camera_id} auto-activation skipped (already active)")
+                    
+            finally:
+                close_session(session)
+                
+        except Exception as e:
+            logger.error(f"[LiveFeed] Error in maritime auto-activation for camera {camera_id}: {e}")
+            import traceback
+            traceback.print_exc()
 
     def filter_cameras(self, search_text):
         """Filter cameras based on search text"""
@@ -461,11 +771,20 @@ class LiveFeedScreen(QWidget):
         except Exception as e:
             logger.error(f"[LiveFeed] Error filtering cameras: {e}")
 
-    def refresh_cameras(self):
-        """Refresh cameras from database (for external calls)"""
+    def refresh_cameras(self, camera_ids=None):
+        """
+        Refresh cameras from database (for external calls)
+        If camera_ids is provided, this is a watchdog status change
+        """
         try:
-            logger.info("[LiveFeed] External refresh_cameras called")
-            self.reload_cameras_from_database()
+            if camera_ids:
+                # This is a watchdog status change - use intelligent synchronization
+                logger.info(f"[LiveFeed] Watchdog refresh_cameras called for cameras: {camera_ids}")
+                self.handle_watchdog_status_change(camera_ids)
+            else:
+                # Regular refresh
+                logger.info("[LiveFeed] External refresh_cameras called")
+                self.reload_cameras_from_database()
         except Exception as e:
             logger.error(f"[LiveFeed] Error in refresh_cameras: {e}")
 
@@ -786,11 +1105,12 @@ class LiveFeedScreen(QWidget):
     def on_camera_status_changed(self, status_change_dict):
         """
         Gestionnaire appelé quand le statut d'une caméra change depuis Settings
+        Implements maritime surveillance logic: disabled camera = no feed display
         """
         try:
             camera_id = status_change_dict.get("id")
             new_status = status_change_dict.get("is_active")
-            logger.info(f"[LiveFeed] Camera status changed signal received for camera {camera_id}: active={new_status}")
+            logger.info(f"[LiveFeed] Camera status changed from Settings for camera {camera_id}: active={new_status}")
             
             # Mettre à jour le statut dans la liste locale
             for i, camera in enumerate(self.cameras):
@@ -810,6 +1130,29 @@ class LiveFeedScreen(QWidget):
                 widget = self.camera_widgets[camera_id]
                 if hasattr(widget, 'camera'):
                     widget.camera["is_active"] = new_status
+                    
+                    # MARITIME LOGIC: If camera disabled by admin, stop feed display
+                    if not new_status:
+                        widget.set_feed_active(False)
+                        # The display_status_message() will be called automatically by set_feed_active()
+                        logger.info(f"[LiveFeed] 🚫 Disabled feed display for camera {camera_id} (admin action)")
+                    else:
+                        # Camera re-enabled - display waiting message
+                        widget.display_status_message()
+                        logger.info(f"[LiveFeed] ✅ Re-enabled camera {camera_id} (admin action)")
+                    
+                # Also update expanded view if this camera is expanded
+                if (hasattr(self, 'expanded_camera_widget') and 
+                    self.expanded_camera_widget and 
+                    hasattr(self.expanded_camera_widget, 'camera_data') and
+                    self.expanded_camera_widget.camera_data.get('id') == camera_id):
+                    # Update expanded view's camera data
+                    self.expanded_camera_widget.camera_data["is_active"] = new_status
+                    # Refresh expanded view message if no feed is active
+                    if not hasattr(self.expanded_camera_widget, 'current_pixmap') or not self.expanded_camera_widget.pixmap:
+                        self.expanded_camera_widget.display_expanded_status_message()
+                        logger.info(f"[LiveFeed] Updated expanded view status for camera {camera_id}")
+                    
                     widget.update_status_indicator()
                     logger.info(f"[LiveFeed] Updated status indicator for camera widget {camera_id}")
                     
