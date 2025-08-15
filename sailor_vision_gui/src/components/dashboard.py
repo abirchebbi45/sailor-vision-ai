@@ -64,7 +64,7 @@ class EnhancedCameraWidget(QFrame):
                 Qt.SmoothTransformation
             ))
         else:
-            self.feed_label.setText("Camera Feed")
+            self.feed_label.setText("📹 Surveillance Ready")
         
         feed_layout.addWidget(self.feed_label)
         layout.addWidget(feed_container)
@@ -100,12 +100,14 @@ class EnhancedCameraWidget(QFrame):
         status_indicator.setFixedSize(5, 5)
         if self.is_active:
             status_indicator.setStyleSheet("background-color: #4CAF50; border-radius: 2.5px;")
+            status_text_content = "🚢 Maritime Surveillance"
         else:
             status_indicator.setStyleSheet("background-color: #F44336; border-radius: 2.5px;")
-        status_text = QLabel(f"Status: {'Active' if self.is_active else 'Inactive'}")
-        status_text.setStyleSheet("color: #757575; font-size: 9px;")
+            status_text_content = "⏸️ Standby"  # Ajout icône pour plus de clarté
+        self.status_text = QLabel(f"Status: {status_text_content}")  # Save reference for dynamic updates
+        self.status_text.setStyleSheet("color: #757575; font-size: 9px;")
         status_layout.addWidget(status_indicator)
-        status_layout.addWidget(status_text)
+        status_layout.addWidget(self.status_text)
         status_layout.addStretch()
         info_layout.addWidget(status_container)
         layout.addWidget(info_container)
@@ -128,7 +130,7 @@ class EnhancedCameraWidget(QFrame):
         """)
 
     def update_frame(self, pixmap):
-        """Update the feed with a new video frame"""
+        """Update the feed with a new video frame - Maritime surveillance display"""
         if pixmap and not pixmap.isNull():
             self.has_live_feed = True
             self.feed_label.setPixmap(pixmap.scaled(
@@ -136,11 +138,14 @@ class EnhancedCameraWidget(QFrame):
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation
             ))
+            # Add maritime status overlay for active feeds
+            # Note: This is visual only, no status changes are made to avoid conflicts
+            self.update_maritime_status()  # Update status display
         else:
             self.reset_to_default()
     
     def reset_to_default(self):
-        """Reset to default placeholder when feed stops"""
+        """Reset to default placeholder when feed stops - Maritime surveillance styling"""
         self.has_live_feed = False
         if self.placeholder_image:
             pixmap = QPixmap(self.placeholder_image)
@@ -150,8 +155,26 @@ class EnhancedCameraWidget(QFrame):
                 Qt.SmoothTransformation
             ))
         else:
-            self.feed_label.setText("Camera Feed")
+            self.feed_label.setText("📹 Surveillance Ready")
             self.feed_label.setStyleSheet("color: white; background-color: #313131;")
+        
+        self.update_maritime_status()  # Update status display
+
+    def update_maritime_status(self):
+        """Update the status display with maritime surveillance context"""
+        if hasattr(self, 'status_text'):
+            if self.is_active and self.has_live_feed:
+                # Camera is active and has live feed
+                self.status_text.setText("Status: 🚢 Maritime Active")
+                self.status_text.setStyleSheet("color: #4CAF50; font-size: 9px; font-weight: bold;")
+            elif self.is_active:
+                # Camera is active but no live feed
+                self.status_text.setText("Status: 🚢 Maritime Surveillance")
+                self.status_text.setStyleSheet("color: #757575; font-size: 9px;")
+            else:
+                # Camera is inactive
+                self.status_text.setText("Status: ⏸️ Standby")
+                self.status_text.setStyleSheet("color: #757575; font-size: 9px;")
 
     def mousePressEvent(self, event):
         """Emit the clicked signal with the camera ID when the widget is clicked."""
@@ -578,7 +601,7 @@ class DashboardScreen(QWidget):
         self.check_system_status()
     
     def load_cameras(self):
-        """Load and display all cameras from the database (always fresh from DB)."""
+        """Load and display cameras with maritime surveillance prioritization."""
         if not self.camera_service:
             logger.warning("Camera service not available, skipping camera load")
             return
@@ -589,13 +612,36 @@ class DashboardScreen(QWidget):
         try:
             # Always reload from DB to get the latest status
             cameras = self.camera_service.get_all_cameras()
+            
+            # 🚢 Maritime Intelligence: Prioritize cameras for optimal surveillance visibility
+            def camera_priority(camera):
+                """
+                Calculate camera priority for dashboard display:
+                - Priority 1 (highest): Active cameras with live feed
+                - Priority 2 (medium): Active cameras without live feed  
+                - Priority 3 (lowest): Inactive cameras
+                """
+                has_live_feed = camera.id in self.camera_frames
+                
+                if camera.is_active and has_live_feed:
+                    return 1  # 🔴 Highest priority: Active + Live Feed
+                elif camera.is_active:
+                    return 2  # 🟡 Medium priority: Active but no feed
+                else:
+                    return 3  # ⚪ Lowest priority: Inactive
+            
+            # Sort cameras by priority (ascending = highest priority first)
+            cameras_sorted = sorted(cameras, key=camera_priority)
+            
+            logger.debug(f"[Dashboard] 🚢 Maritime Prioritization: Sorted {len(cameras_sorted)} cameras by surveillance priority")
+            
             if not hasattr(self, 'max_cameras'):
                 self.max_cameras = 3
-            cameras_to_show = min(len(cameras), self.max_cameras)
-            remaining_cameras = len(cameras) - cameras_to_show
+            cameras_to_show = min(len(cameras_sorted), self.max_cameras)
+            remaining_cameras = len(cameras_sorted) - cameras_to_show
             
             for i in range(cameras_to_show):
-                camera = cameras[i]
+                camera = cameras_sorted[i]
                 # Pass the ORM object, but EnhancedCameraWidget only stores primitives
                 camera_widget = EnhancedCameraWidget(camera)
                 camera_widget.clicked.connect(self.navigate_to_live_feed)
@@ -603,6 +649,11 @@ class DashboardScreen(QWidget):
                 if camera.id in self.camera_frames:
                     camera_widget.update_frame(self.camera_frames[camera.id])
                 self.camera_flow_layout.addWidget(camera_widget)
+                
+                # Log priority for debugging
+                priority = camera_priority(camera)
+                priority_text = ["", "🔴 High (Active+Feed)", "🟡 Medium (Active)", "⚪ Low (Inactive)"][priority]
+                logger.debug(f"[Dashboard] Camera {camera.id} ({camera.name}): {priority_text}")
             
             self.camera_flow_layout.addStretch(1)
             
@@ -616,41 +667,45 @@ class DashboardScreen(QWidget):
             logger.error(f"Error loading cameras: {e}")
 
     def update_camera_feed(self, camera_id, pixmap):
-        """Update a specific camera feed with new frame and set status active in DB."""
-        logger.info(f"Updating feed for camera ID: {camera_id}")
+        """
+        Update a specific camera feed with new frame.
+        Compatible with maritime surveillance logic - does not automatically change camera status.
+        """
+        logger.info(f"[Dashboard] Updating feed display for camera ID: {camera_id}")
+        
+        # Check if this is a new feed (camera gaining live feed)
+        was_without_feed = camera_id not in self.camera_frames
+        
         self.camera_frames[camera_id] = pixmap
 
-        # Only update camera status occasionally, not on every frame
-        if not hasattr(self, '_last_status_update'):
-            self._last_status_update = {}
+        # NOTE: Removed automatic camera activation to avoid conflicts with maritime logic
+        # Camera status is now managed by:
+        # 1. Manual activation (Settings screen) - Priority 1
+        # 2. Maritime auto-activation (Live Feed) - Priority 2  
+        # 3. Watchdog timeout management - Priority 3
         
-        current_time = time.time()
-        last_update = self._last_status_update.get(camera_id, 0)
-        
-        # Only update status every 10 seconds to reduce database load
-        if current_time - last_update > 10:
-            try:
-                # Créer une session fraîche pour cette opération spécifique
-                new_session = get_session()
-                camera_service = CameraService(db_session=new_session)
-                camera_service.set_camera_active(camera_id, True)
-                new_session.commit()
-                self._last_status_update[camera_id] = current_time
-            except Exception as e:
-                logger.error(f"Erreur lors de la mise à jour de l'état de la caméra: {str(e)}")
-            finally:
-                # Toujours fermer la session
-                if 'new_session' in locals():
-                    close_session(new_session)
-        
-        # Update widget display without reloading from database
+        # Update widget display without changing database status
         if camera_id in self.camera_widgets:
             widget = self.camera_widgets[camera_id]
             widget.update_frame(pixmap)  # This will show the live preview!
+            logger.debug(f"[Dashboard] 🚢 Maritime Display: Camera {camera_id} feed updated")
+        
+        # 🚢 Maritime Intelligence: Re-prioritize cameras if a camera gained live feed
+        if was_without_feed:
+            logger.info(f"[Dashboard] 🚢 Maritime Priority Update: Camera {camera_id} gained live feed - Re-sorting display")
+            # Delay the reload slightly to ensure widget update completes
+            QTimer.singleShot(100, self.load_cameras)
 
     def camera_feed_stopped(self, camera_id):
-        """Handle when a camera feed stops and set status inactive in DB."""
-        logger.info(f"Feed stopped for camera ID: {camera_id}")
+        """
+        Handle when a camera feed stops.
+        Compatible with maritime surveillance logic - does not automatically change camera status.
+        """
+        logger.info(f"[Dashboard] Feed display stopped for camera ID: {camera_id}")
+        
+        # Check if camera was actually in the feed list
+        had_feed = camera_id in self.camera_frames
+        
         if camera_id in self.camera_frames:
             del self.camera_frames[camera_id]
             
@@ -658,29 +713,20 @@ class DashboardScreen(QWidget):
         if camera_id in self.camera_widgets:
             widget = self.camera_widgets[camera_id]
             widget.reset_to_default()
+            logger.debug(f"[Dashboard] 🚢 Maritime Display: Camera {camera_id} feed display reset")
         
-        # Only update database status occasionally
-        if not hasattr(self, '_last_stop_update'):
-            self._last_stop_update = {}
+        # 🚢 Maritime Intelligence: Re-prioritize cameras if a camera lost live feed
+        if had_feed:
+            logger.info(f"[Dashboard] 🚢 Maritime Priority Update: Camera {camera_id} lost live feed - Re-sorting display")
+            # Delay the reload slightly to ensure widget update completes
+            QTimer.singleShot(100, self.load_cameras)
         
-        current_time = time.time()
-        last_update = self._last_stop_update.get(camera_id, 0)
-        
-        # Only update status every 30 seconds for stop events
-        if current_time - last_update > 30:
-            try:
-                # Créer une session fraîche pour cette opération spécifique
-                new_session = get_session()
-                camera_service = CameraService(db_session=new_session)
-                camera_service.set_camera_active(camera_id, False)
-                new_session.commit()
-                self._last_stop_update[camera_id] = current_time
-            except Exception as e:
-                logger.error(f"Erreur lors de la mise à jour de l'état de la caméra: {str(e)}")
-            finally:
-                # Toujours fermer la session
-                if 'new_session' in locals():
-                    close_session(new_session)
+        # NOTE: Removed automatic camera deactivation to avoid conflicts with maritime logic
+        # Camera status changes are now handled by the maritime surveillance system:
+        # - ROS Watchdog manages timeout-based deactivation (10s grace period)
+        # - Live Feed manages auto-activation on feed reception
+        # - Settings screen manages manual administrative changes
+        # This ensures proper coordination and avoids status conflicts
 
     def view_all_alerts(self):
         """Navigate to the alerts screen if there are active alerts, otherwise show a dialog"""
@@ -839,11 +885,62 @@ class DashboardScreen(QWidget):
         """Reset the clicked camera ID."""
         self.clicked_camera_id = None
 
-    def refresh_cameras(self):
-        """Refresh camera data from the database when their status changes"""
-        logger.info("Refreshing cameras in DashboardScreen from database")
-        # Simply call the existing load_cameras method to get fresh data
-        self.load_cameras()
+    def refresh_cameras(self, camera_ids=None):
+        """
+        Refresh camera data from the database when their status changes.
+        Compatible with maritime surveillance system - supports targeted updates with intelligent prioritization.
+        
+        Args:
+            camera_ids: Optional list of specific camera IDs to refresh (for watchdog updates)
+        """
+        if camera_ids:
+            logger.info(f"[Dashboard] 🚢 Maritime Update: Refreshing specific cameras from watchdog: {camera_ids}")
+            
+            # Check if any refreshed camera changes priority (active/inactive status change)
+            priority_changed = False
+            
+            try:
+                if self.camera_service:
+                    cameras = self.camera_service.get_all_cameras()
+                    cameras_dict = {cam.id: cam for cam in cameras}
+                    
+                    for camera_id in camera_ids:
+                        if camera_id in cameras_dict and camera_id in self.camera_widgets:
+                            camera = cameras_dict[camera_id]
+                            widget = self.camera_widgets[camera_id]
+                            
+                            # Check if status changed (affects priority)
+                            old_status = widget.is_active
+                            new_status = camera.is_active
+                            
+                            if old_status != new_status:
+                                priority_changed = True
+                                logger.info(f"[Dashboard] 🚢 Priority Change: Camera {camera_id} status changed {old_status} → {new_status}")
+                            
+                            # Update the widget's internal camera data
+                            widget.is_active = camera.is_active
+                            
+                            # Update visual status indicator without full reload
+                            widget.init_ui()  # Refresh the widget display
+                            
+                            logger.debug(f"[Dashboard] Updated camera {camera_id} status: {'Active' if camera.is_active else 'Inactive'}")
+                    
+                    # If any camera's priority changed, re-sort the entire display
+                    if priority_changed:
+                        logger.info("[Dashboard] 🚢 Maritime Intelligence: Camera priorities changed - Re-sorting display")
+                        self.load_cameras()
+                        
+                else:
+                    logger.warning("[Dashboard] Camera service not available for targeted refresh")
+                    
+            except Exception as e:
+                logger.error(f"[Dashboard] Error in targeted camera refresh: {e}")
+                # Fallback to full refresh
+                self.load_cameras()
+        else:
+            logger.info("[Dashboard] Refreshing all cameras from database with maritime prioritization")
+            # Full refresh for general updates
+            self.load_cameras()
 
     def prepare_screen(self):
         """Préparer l'écran avant qu'il ne devienne actif"""
