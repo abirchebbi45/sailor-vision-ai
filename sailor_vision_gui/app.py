@@ -583,12 +583,14 @@ class MainWindow(QMainWindow, MainWindowPermissionMixin):
         """Handle camera status changes reported by the watchdog"""
         logger.info(f"Camera status changed for IDs: {camera_ids}")
         
-        # Update Dashboard and LiveFeed screens
+        # Update Dashboard and LiveFeed screens with intelligent synchronization
         if hasattr(self, 'dashboard_screen') and hasattr(self.dashboard_screen, 'refresh_cameras'):
-            self.dashboard_screen.refresh_cameras()
+            # Pass camera_ids to enable intelligent maritime synchronization for Dashboard too
+            self.dashboard_screen.refresh_cameras(camera_ids)
         
         if hasattr(self, 'live_feed_screen') and hasattr(self.live_feed_screen, 'refresh_cameras'):
-            self.live_feed_screen.refresh_cameras()
+            # Pass camera_ids to enable intelligent maritime synchronization
+            self.live_feed_screen.refresh_cameras(camera_ids)
             
     def on_ros_status_changed(self, connected):
         """Handle global ROS status changes"""
