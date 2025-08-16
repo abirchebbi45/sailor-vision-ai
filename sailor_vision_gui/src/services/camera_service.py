@@ -14,8 +14,35 @@ class CameraService:
         self.db_session = db_session
 
     def get_all_cameras(self):
-        """Fetch all cameras from the database, including inactive ones."""
-        return self.db_session.query(Camera).all()
+        """Get all active cameras (excludes soft deleted)."""
+        try:
+            cameras = self.db_session.query(Camera).filter(
+                Camera.deleted_at.is_(None)
+            ).all()
+            return cameras
+        except Exception as e:
+            logger.error(f"Error fetching active cameras: {e}")
+            return []
+    
+    def get_all_cameras_including_deleted(self):
+        """Get all cameras including soft deleted ones."""
+        try:
+            cameras = self.db_session.query(Camera).all()
+            return cameras
+        except Exception as e:
+            logger.error(f"Error fetching all cameras: {e}")
+            return []
+    
+    def get_deleted_cameras(self):
+        """Get only soft deleted cameras."""
+        try:
+            cameras = self.db_session.query(Camera).filter(
+                Camera.deleted_at.isnot(None)
+            ).all()
+            return cameras
+        except Exception as e:
+            logger.error(f"Error fetching deleted cameras: {e}")
+            return []
 
     def get_active_cameras(self):
         """Fetch only active cameras from the database."""
@@ -58,18 +85,51 @@ class CameraService:
             return False
 
     def delete_camera(self, camera_id):
-        """Delete a camera from the database."""
+        """Delete a camera from the database (HARD DELETE - not recommended)."""
         try:
             camera = self.db_session.query(Camera).filter(Camera.id == camera_id).first()
             if camera:
                 self.db_session.delete(camera)
                 self.db_session.commit()
-                logger.info(f"Deleted camera ID: {camera_id}")
+                logger.info(f"Hard deleted camera ID: {camera_id}")
                 return True
             return False
         except Exception as e:
             self.db_session.rollback()
             logger.error(f"Error deleting camera: {e}")
+            return False
+    
+    def soft_delete_camera(self, camera_id):
+        """Soft delete a camera (preserves historical data)."""
+        try:
+            camera = self.db_session.query(Camera).filter(Camera.id == camera_id).first()
+            if camera:
+                camera.soft_delete()
+                self.db_session.commit()
+                logger.info(f"Soft deleted camera ID: {camera_id} ({camera.name})")
+                return True
+            return False
+        except Exception as e:
+            self.db_session.rollback()
+            logger.error(f"Error soft deleting camera: {e}")
+            return False
+    
+    def restore_camera(self, camera_id):
+        """Restore a soft deleted camera."""
+        try:
+            camera = self.db_session.query(Camera).filter(
+                Camera.id == camera_id,
+                Camera.deleted_at.isnot(None)
+            ).first()
+            if camera:
+                camera.restore()
+                self.db_session.commit()
+                logger.info(f"Restored camera ID: {camera_id} ({camera.name})")
+                return True
+            return False
+        except Exception as e:
+            self.db_session.rollback()
+            logger.error(f"Error restoring camera: {e}")
             return False
 
     def set_camera_active(self, camera_id, active=True):
