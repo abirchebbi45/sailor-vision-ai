@@ -37,6 +37,13 @@ class CameraFeedWidget(QFrame):
         self.feed_timer.setSingleShot(True)
         self.feed_timer.timeout.connect(self.handle_feed_timeout)
         self.feed_active = False
+        
+        # Notification system for temporary messages
+        self.notification_timer = QTimer(self)
+        self.notification_timer.setSingleShot(True)
+        self.notification_timer.timeout.connect(self.hide_notification)
+        self.notification_label = None
+        
         self.init_ui()
 
     def init_ui(self):
@@ -300,12 +307,59 @@ class CameraFeedWidget(QFrame):
         """
         self.set_feed_active(False)
 
+    def show_temporary_notification(self, message, duration=3000):
+        """
+        Show a temporary notification overlay without interrupting the video feed
+        """
+        if not self.notification_label:
+            # Create notification label if it doesn't exist
+            self.notification_label = QLabel(self)
+            self.notification_label.setAlignment(Qt.AlignCenter)
+            self.notification_label.setWordWrap(True)
+            self.notification_label.setStyleSheet("""
+                background-color: rgba(76, 175, 80, 220);
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                border-radius: 6px;
+                padding: 8px;
+                border: 2px solid #4CAF50;
+            """)
+            self.notification_label.hide()
+        
+        # Set message and show notification
+        self.notification_label.setText(f"✅ {message}")
+        self.notification_label.adjustSize()
+        
+        # Position notification at the top of the widget
+        self.notification_label.move(
+            (self.width() - self.notification_label.width()) // 2,
+            10
+        )
+        self.notification_label.show()
+        self.notification_label.raise_()  # Bring to front
+        
+        # Start timer to hide notification
+        self.notification_timer.start(duration)
+    
+    def hide_notification(self):
+        """Hide the temporary notification"""
+        if self.notification_label:
+            self.notification_label.hide()
+
     def resizeEvent(self, event):
         """Redimensionner l'image quand le widget change de taille"""
         super().resizeEvent(event)
         
         if self.current_pixmap and not self.current_pixmap.isNull():
             self.update_feed(self.current_pixmap)
+            
+        # Reposition notification if visible
+        if self.notification_label and self.notification_label.isVisible():
+            self.notification_label.move(
+                (self.width() - self.notification_label.width()) // 2,
+                10
+            )
 
 class ExpandedCameraWidget(QWidget):
     close_clicked = pyqtSignal()
@@ -645,16 +699,16 @@ class LiveFeedScreen(QWidget):
                                 widget.update_status_indicator()
                                 
                                 # Maritime logic: If camera was deactivated by watchdog but still has feed,
-                                # show appropriate status message
+                                # show appropriate notification without interrupting feed
                                 if not camera.is_active and widget.feed_active:
-                                    widget.display_status_message(
-                                        custom_message=f"🚢 Maritime Alert: Camera {camera.name} feed lost - Monitoring discontinued",
-                                        message_type="warning"
+                                    widget.show_temporary_notification(
+                                        f"🚢 Maritime Alert: Camera {camera.name} feed lost - Monitoring discontinued",
+                                        duration=4000
                                     )
                                 elif camera.is_active and widget.feed_active:
-                                    widget.display_status_message(
-                                        custom_message=f"🚢 Maritime Surveillance: Camera {camera.name} operational",
-                                        message_type="success"
+                                    widget.show_temporary_notification(
+                                        f"🚢 Maritime Surveillance: Camera {camera.name} operational",
+                                        duration=2000
                                     )
                             break
                             
@@ -691,10 +745,10 @@ class LiveFeedScreen(QWidget):
                 if camera_id in self.camera_widgets:
                     widget = self.camera_widgets[camera_id]
                     widget.set_feed_active(True)
-                    # Display maritime status for active camera receiving feed
-                    widget.display_status_message(
-                        custom_message=f"🚢 Maritime Surveillance: Camera {camera_data.get('name')} feed confirmed",
-                        message_type="success"
+                    # Display temporary confirmation notification without interrupting feed
+                    widget.show_temporary_notification(
+                        f"🚢 Maritime Surveillance: Camera {camera_data.get('name')} feed confirmed",
+                        duration=2000  # 2 seconds
                     )
                 return
             
@@ -728,10 +782,10 @@ class LiveFeedScreen(QWidget):
                                 widget.set_feed_active(True)
                                 widget.update_status_indicator()
                                 
-                                # Display maritime success message on the widget
-                                widget.display_status_message(
-                                    custom_message=f"🚢 Maritime Alert: Camera {camera_data.get('name')} auto-activated - Surveillance resumed",
-                                    message_type="success"
+                                # Display temporary maritime success notification without interrupting feed
+                                widget.show_temporary_notification(
+                                    f"🚢 Maritime Alert: Camera {camera_data.get('name')} auto-activated - Surveillance resumed",
+                                    duration=3000  # 3 seconds
                                 )
                             
                             logger.info(f"[LiveFeed] ✅ Maritime Auto-Activation successful: Camera {camera_id}")
@@ -1111,6 +1165,29 @@ class LiveFeedScreen(QWidget):
             camera_id = status_change_dict.get("id")
             new_status = status_change_dict.get("is_active")
             logger.info(f"[LiveFeed] Camera status changed from Settings for camera {camera_id}: active={new_status}")
+            
+            # Si new_status est None, cela signifie que la caméra a été supprimée (soft delete)
+            if new_status is None:
+                logger.info(f"[LiveFeed] Camera {camera_id} was deleted - removing from display")
+                
+                # Si la caméra supprimée est actuellement en vue étendue, fermer la vue
+                if (hasattr(self, 'expanded_camera_widget') and 
+                    self.expanded_camera_widget and 
+                    hasattr(self.expanded_camera_widget, 'camera_data') and
+                    self.expanded_camera_widget.camera_data.get('id') == camera_id):
+                    logger.info(f"[LiveFeed] Closing expanded view for deleted camera {camera_id}")
+                    self.close_expanded_camera()
+                
+                # Supprimer de la liste locale
+                self.cameras = [cam for cam in self.cameras if cam.get("id") != camera_id]
+                
+                # Supprimer de la liste filtrée
+                self.filtered_cameras = [cam for cam in self.filtered_cameras if cam.get("id") != camera_id]
+                
+                # Recharger complètement l'affichage pour supprimer le widget
+                self.load_cameras(self.filtered_cameras)
+                logger.info(f"[LiveFeed] Removed deleted camera {camera_id} from display")
+                return
             
             # Mettre à jour le statut dans la liste locale
             for i, camera in enumerate(self.cameras):
