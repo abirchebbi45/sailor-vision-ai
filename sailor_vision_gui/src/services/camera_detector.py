@@ -67,18 +67,32 @@ class CameraDetector(QObject):
             logger.info("Camera detector refresh timer started")
     
     def refresh_approved_cameras(self):
-        """Refresh the list of approved cameras from the database."""
+        """Refresh the list of approved cameras from the database (excluding soft deleted)."""
         session = None
         try:
             session = create_new_session()
-            cameras = session.query(Camera).all()
+            # Query only cameras that are NOT soft deleted (deleted_at is NULL)
+            cameras = session.query(Camera).filter(
+                Camera.deleted_at.is_(None)
+            ).all()
             
+            old_approved = set(self.approved_cameras.keys())
             self.approved_cameras = {}
+            
             for camera in cameras:
                 if camera.ip_address:
                     self.approved_cameras[camera.ip_address] = camera
             
-            logger.debug(f"Refreshed approved cameras: {len(cameras)} found")
+            new_approved = set(self.approved_cameras.keys())
+            
+            # Remove deleted cameras from detected_cameras set so they can be re-detected
+            deleted_cameras = old_approved - new_approved
+            for deleted_camera in deleted_cameras:
+                if deleted_camera in self.detected_cameras:
+                    self.detected_cameras.remove(deleted_camera)
+                    logger.info(f"[CameraDetector] Removed soft-deleted camera from detected set: {deleted_camera}")
+            
+            logger.debug(f"Refreshed approved cameras: {len(cameras)} found (excluding soft deleted)")
         except Exception as e:
             logger.error(f"Error refreshing approved cameras: {e}")
         finally:
