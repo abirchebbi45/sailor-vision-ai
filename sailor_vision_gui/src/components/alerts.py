@@ -223,6 +223,9 @@ class AlertItem(QFrame):
 
 
 class AlertsScreen(QWidget):
+    # Signal émis quand des alertes sont acknowledgées depuis l'écran Alerts
+    alerts_acknowledged = pyqtSignal()
+    
     def __init__(self, user_data=None, ros_node=None):
         super().__init__()
         self.user_data = user_data
@@ -502,6 +505,9 @@ class AlertsScreen(QWidget):
         # Reload alerts and alert history
         self.load_alerts()
         self.load_alert_history()
+        
+        # Emit signal to update other screens (like Dashboard)
+        self.alerts_acknowledged.emit()
 
     def load_alert_history(self):
         """Load and display the alert history from the alert service."""
@@ -548,6 +554,8 @@ class AlertsScreen(QWidget):
             # Reload alerts
             self.load_alerts()
             self.load_alert_history()
+            # Emit signal to update other screens (like Dashboard)
+            self.alerts_acknowledged.emit()
     
     def archive_alert(self, alert_id):
         """Archive an alert and refresh the UI."""
