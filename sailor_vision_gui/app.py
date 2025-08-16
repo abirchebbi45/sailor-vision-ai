@@ -525,6 +525,12 @@ class MainWindow(QMainWindow, MainWindowPermissionMixin):
             if self.dashboard_screen and self.live_feed_screen:
                 self.dashboard_screen.navigate_to_live_feed.connect(self.handle_live_feed_navigation)
                 
+            # Connect alerts synchronization between Dashboard and Alerts screen
+            if self.dashboard_screen and self.alerts_screen:
+                self.dashboard_screen.alerts_acknowledged.connect(self.alerts_screen.refresh_alerts)
+                self.alerts_screen.alerts_acknowledged.connect(self.dashboard_screen.load_alerts)
+                logger.info("Connected bidirectional alerts synchronization between dashboard and alerts screen")
+                
             # Connect signals between settings and live feed
             if self.settings_screen and self.live_feed_screen:
                 self.settings_screen.camera_approved_signal.connect(self.live_feed_screen.refresh_cameras_from_database)
