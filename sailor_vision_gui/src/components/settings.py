@@ -2224,7 +2224,7 @@ class SettingsScreen(QWidget):
         if is_dict_camera:
             delete_btn.clicked.connect(lambda: self.delete_camera_simple(camera))
         else:
-            delete_btn.clicked.connect(lambda checked, c=camera: self.delete_camera(c))
+            delete_btn.clicked.connect(lambda checked, c=camera: self.delete_camera_simple(c))
         buttons_layout.addWidget(delete_btn)
         
         return buttons_frame
@@ -3569,17 +3569,220 @@ class SettingsScreen(QWidget):
             QMessageBox.warning(self, "Error", f"Failed to configure camera: {e}")
     
     def delete_camera_simple(self, camera):
-        """Delete camera for simple camera items"""
+        """Intelligent camera removal with historical data preservation options"""
         try:
-            camera_name = camera.get("name") if isinstance(camera, dict) else getattr(camera, 'name', 'Unknown')
-            reply = QMessageBox.question(
-                self, 
-                "Confirm Delete", 
-                f"Are you sure you want to delete camera '{camera_name}'?",
-                QMessageBox.Yes | QMessageBox.No
-            )
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QRadioButton, QButtonGroup, QCheckBox, QTextEdit
+            from PyQt5.QtCore import Qt
+            from datetime import datetime
             
-            if reply == QMessageBox.Yes:
-                QMessageBox.information(self, "Delete Camera", f"Camera {camera_name} would be deleted.")
+            camera_id = camera.get("id") if isinstance(camera, dict) else getattr(camera, 'id', None)
+            camera_name = camera.get("name") if isinstance(camera, dict) else getattr(camera, 'name', 'Unknown')
+            
+            if not camera_id:
+                QMessageBox.warning(self, "Error", "Cannot delete camera: No ID found")
+                return
+            
+            # Créer un dialog personnalisé pour choisir le type de suppression
+            dialog = QDialog(self)
+            dialog.setWindowTitle("🗑️ Camera Removal Options")
+            dialog.setModal(True)
+            dialog.setMinimumWidth(550)
+            
+            layout = QVBoxLayout(dialog)
+            
+            # Header
+            header = QLabel("📹 Choose Camera Removal Method")
+            header.setStyleSheet("""
+                QLabel {
+                    background-color: #e3f2fd;
+                    color: #1565c0;
+                    font-size: 16px;
+                    font-weight: bold;
+                    padding: 15px;
+                    border: 2px solid #42a5f5;
+                    border-radius: 8px;
+                    margin-bottom: 15px;
+                }
+            """)
+            header.setAlignment(Qt.AlignCenter)
+            layout.addWidget(header)
+            
+            # Camera info
+            info_label = QLabel(f"📹 Camera: {camera_name}")
+            info_label.setStyleSheet("font-size: 14px; font-weight: bold; margin-bottom: 15px;")
+            layout.addWidget(info_label)
+            
+            # Compter les dépendances
+            from database import create_new_session, close_session
+            from models import Alert, Recording, Detection
+            
+            session = create_new_session()
+            try:
+                alerts_count = session.query(Alert).filter(Alert.camera_id == camera_id).count()
+                recordings_count = session.query(Recording).filter(Recording.camera_id == camera_id).count()
+                detections_count = session.query(Detection).filter(Detection.camera_id == camera_id).count()
+            except:
+                alerts_count = recordings_count = detections_count = 0
+            finally:
+                close_session(session)
+            
+            # Afficher les dépendances
+            deps_info = QTextEdit()
+            deps_info.setMaximumHeight(100)
+            deps_info.setReadOnly(True)
+            deps_text = f"""📊 Historical Data: {alerts_count} alerts, {recordings_count} recordings, {detections_count} detections"""
+            
+            total_data = alerts_count + recordings_count + detections_count
+            if total_data > 0:
+                deps_info.setStyleSheet("background-color: #fff3e0; color: #f57c00; padding: 10px;")
+                deps_text += "\n💡 This represents valuable surveillance history"
+            else:
+                deps_info.setStyleSheet("background-color: #e8f5e8; color: #2e7d32; padding: 10px;")
+                deps_text += "\n✅ No historical data found"
+            
+            deps_info.setPlainText(deps_text)
+            layout.addWidget(deps_info)
+            
+            # Options de suppression
+            options_label = QLabel("🔧 Removal Method:")
+            options_label.setStyleSheet("font-size: 14px; font-weight: bold; margin: 15px 0 10px 0;")
+            layout.addWidget(options_label)
+            
+            radio_group = QButtonGroup()
+            
+            # Option 1: Suppression logique (recommandée)
+            soft_radio = QRadioButton("🛡️ Logical Removal (RECOMMENDED)")
+            soft_radio.setChecked(True)
+            soft_radio.setStyleSheet("font-size: 13px; font-weight: bold; color: #2e7d32; margin: 5px 0;")
+            radio_group.addButton(soft_radio, 0)
+            layout.addWidget(soft_radio)
+            
+            soft_desc = QLabel("• Camera hidden from interface but historical data preserved\n• Compliance and audit trail maintained\n• Can be restored if needed")
+            soft_desc.setStyleSheet("margin-left: 25px; margin-bottom: 10px; color: #2e7d32; background-color: #e8f5e8; padding: 8px; border-left: 3px solid #4caf50;")
+            layout.addWidget(soft_desc)
+            
+            # Option 2: Suppression physique
+            hard_radio = QRadioButton("⚠️ Physical Deletion (PERMANENT)")
+            hard_radio.setStyleSheet("font-size: 13px; font-weight: bold; color: #d32f2f; margin: 5px 0;")
+            radio_group.addButton(hard_radio, 1)
+            layout.addWidget(hard_radio)
+            
+            hard_desc = QLabel("• PERMANENTLY deletes camera and ALL historical data\n• Action CANNOT be undone\n• Compliance data lost forever")
+            hard_desc.setStyleSheet("margin-left: 25px; margin-bottom: 15px; color: #d32f2f; background-color: #ffebee; padding: 8px; border-left: 3px solid #f44336;")
+            layout.addWidget(hard_desc)
+            
+            # Checkbox de confirmation
+            confirm_checkbox = QCheckBox("I understand the consequences")
+            confirm_checkbox.setStyleSheet("font-size: 13px; font-weight: bold; color: #1976d2; margin: 15px 0;")
+            layout.addWidget(confirm_checkbox)
+            
+            # Boutons
+            buttons_layout = QHBoxLayout()
+            
+            cancel_btn = QPushButton("❌ Cancel")
+            cancel_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #6c757d; color: white; font-size: 13px; font-weight: bold;
+                    padding: 10px 20px; border: none; border-radius: 6px; min-width: 100px;
+                }
+                QPushButton:hover { background-color: #5a6268; }
+            """)
+            cancel_btn.clicked.connect(dialog.reject)
+            
+            action_btn = QPushButton("🛡️ REMOVE LOGICALLY")
+            action_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4caf50; color: white; font-size: 13px; font-weight: bold;
+                    padding: 10px 20px; border: none; border-radius: 6px; min-width: 150px;
+                }
+                QPushButton:hover { background-color: #43a047; }
+                QPushButton:disabled { background-color: #cccccc; color: #666666; }
+            """)
+            action_btn.setEnabled(False)
+            action_btn.clicked.connect(dialog.accept)
+            
+            # Mettre à jour le bouton selon la sélection
+            def update_button():
+                if radio_group.checkedId() == 0:  # Soft delete
+                    action_btn.setText("🛡️ REMOVE LOGICALLY")
+                    action_btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: #4caf50; color: white; font-size: 13px; font-weight: bold;
+                            padding: 10px 20px; border: none; border-radius: 6px; min-width: 150px;
+                        }
+                        QPushButton:hover { background-color: #43a047; }
+                        QPushButton:disabled { background-color: #cccccc; color: #666666; }
+                    """)
+                else:  # Hard delete
+                    action_btn.setText("🗑️ DELETE PERMANENTLY")
+                    action_btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: #dc3545; color: white; font-size: 13px; font-weight: bold;
+                            padding: 10px 20px; border: none; border-radius: 6px; min-width: 150px;
+                        }
+                        QPushButton:hover { background-color: #c82333; }
+                        QPushButton:disabled { background-color: #cccccc; color: #666666; }
+                    """)
+            
+            soft_radio.toggled.connect(update_button)
+            hard_radio.toggled.connect(update_button)
+            confirm_checkbox.toggled.connect(action_btn.setEnabled)
+            
+            buttons_layout.addWidget(cancel_btn)
+            buttons_layout.addStretch()
+            buttons_layout.addWidget(action_btn)
+            layout.addLayout(buttons_layout)
+            
+            # Exécuter le dialog
+            if dialog.exec_() == QDialog.Accepted:
+                if not hasattr(self, 'camera_service') or not self.camera_service:
+                    QMessageBox.warning(self, "Error", "Camera service not available")
+                    return
+                
+                success = False
+                is_soft_delete = radio_group.checkedId() == 0
+                
+                if is_soft_delete:
+                    # Suppression logique
+                    success = self.camera_service.soft_delete_camera(camera_id)
+                    if success:
+                        QMessageBox.information(
+                            self, "✅ Camera Removed Logically", 
+                            f"Camera '{camera_name}' has been logically removed.\n\n"
+                            f"✅ Historical data preserved\n✅ Audit trail maintained\n✅ Can be restored if needed"
+                        )
+                else:
+                    # Suppression physique - utiliser la méthode safe existante
+                    try:
+                        from safe_camera_deletion_patch import safe_delete_camera
+                        success = safe_delete_camera(self.camera_service, camera_id)
+                    except ImportError:
+                        # Fallback sur la méthode du service
+                        success = self.camera_service.delete_camera(camera_id)
+                    
+                    if success:
+                        QMessageBox.information(
+                            self, "✅ Camera Deleted Permanently", 
+                            f"Camera '{camera_name}' and all associated data have been permanently deleted."
+                        )
+                
+                if success:
+                    # Recharger l'interface
+                    if hasattr(self, 'load_camera_settings'):
+                        self.load_camera_settings()
+                    
+                    # Émettre le signal
+                    if hasattr(self, 'camera_status_changed_signal'):
+                        self.camera_status_changed_signal.emit({
+                            "id": camera_id, 
+                            "deleted": True,
+                            "soft_delete": is_soft_delete
+                        })
+                else:
+                    QMessageBox.critical(self, "❌ Operation Failed", "An error occurred. Please check the logs.")
+                    
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to delete camera: {e}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in camera removal: {e}")
+            QMessageBox.critical(self, "Error", f"Unexpected error: {e}")
