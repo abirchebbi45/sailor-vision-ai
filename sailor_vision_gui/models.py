@@ -60,6 +60,7 @@ class Camera(Base):
     created_at = Column(DateTime, default=func.now())
     last_online = Column(DateTime)
     camera_type = Column(String(50))  # e.g., "IP Camera", "Analog Camera"
+    deleted_at = Column(DateTime, nullable=True)  # Soft delete support for historical data preservation
     
     # Relationships
     recordings = relationship("Recording", back_populates="camera")
@@ -67,6 +68,25 @@ class Camera(Base):
     
     def __repr__(self):
         return f"<Camera {self.name}>"
+    
+    @property
+    def is_deleted(self):
+        """Check if camera is soft deleted"""
+        return self.deleted_at is not None
+    
+    def soft_delete(self):
+        """Mark camera as deleted while preserving historical data"""
+        self.deleted_at = func.now()
+        self.is_active = False
+        if not self.name.startswith("[DELETED]"):
+            self.name = f"[DELETED] {self.name}"
+    
+    def restore(self):
+        """Restore a soft deleted camera"""
+        self.deleted_at = None
+        self.is_active = True
+        if self.name.startswith("[DELETED] "):
+            self.name = self.name.replace("[DELETED] ", "")
 
 class Recording(Base):
     __tablename__ = "recordings"
