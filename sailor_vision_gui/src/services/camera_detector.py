@@ -76,21 +76,55 @@ class CameraDetector(QObject):
                 Camera.deleted_at.is_(None)
             ).all()
             
+            # Store old approved cameras for comparison
             old_approved = set(self.approved_cameras.keys())
             self.approved_cameras = {}
+            
+            # Store current approved device paths
+            approved_device_paths = set()
             
             for camera in cameras:
                 if camera.ip_address:
                     self.approved_cameras[camera.ip_address] = camera
+                    # Extract device path from camera name if it follows the pattern "AutoCam videoX"
+                    if "AutoCam video" in camera.name:
+                        video_num = camera.name.replace("AutoCam video", "").strip()
+                        device_path = f"/dev/video{video_num}"
+                        approved_device_paths.add(device_path)
             
-            new_approved = set(self.approved_cameras.keys())
+            # Get all cameras (including soft deleted) to check what was removed
+            all_cameras = session.query(Camera).all()
+            soft_deleted_device_paths = set()
             
-            # Remove deleted cameras from detected_cameras set so they can be re-detected
-            deleted_cameras = old_approved - new_approved
-            for deleted_camera in deleted_cameras:
-                if deleted_camera in self.detected_cameras:
-                    self.detected_cameras.remove(deleted_camera)
-                    logger.info(f"[CameraDetector] Removed soft-deleted camera from detected set: {deleted_camera}")
+            for camera in all_cameras:
+                if camera.deleted_at is not None and "AutoCam video" in camera.name:
+                    # Handle names like "[DELETED] AutoCam video10"
+                    name = camera.name
+                    if name.startswith("[DELETED] "):
+                        name = name.replace("[DELETED] ", "")
+                    
+                    if "AutoCam video" in name:
+                        video_num = name.replace("AutoCam video", "").strip()
+                        device_path = f"/dev/video{video_num}"
+                        soft_deleted_device_paths.add(device_path)
+            
+            # Clean up detected_cameras: remove soft deleted and not approved devices
+            # that are also not in pending list
+            devices_to_remove = set()
+            
+            for device_path in self.detected_cameras:
+                is_approved = device_path in approved_device_paths
+                is_soft_deleted = device_path in soft_deleted_device_paths
+                is_pending = self.is_device_in_pending_list(device_path)
+                
+                if is_soft_deleted or (not is_approved and not is_pending):
+                    devices_to_remove.add(device_path)
+                    logger.info(f"[CameraDetector] Will remove device from detected set: {device_path} (approved={is_approved}, soft_deleted={is_soft_deleted}, pending={is_pending})")
+            
+            # Remove the devices
+            for device_path in devices_to_remove:
+                self.detected_cameras.remove(device_path)
+                logger.info(f"[CameraDetector] Removed device from detected set: {device_path}")
             
             logger.debug(f"Refreshed approved cameras: {len(cameras)} found (excluding soft deleted)")
         except Exception as e:
@@ -98,6 +132,18 @@ class CameraDetector(QObject):
         finally:
             if session:
                 close_session(session)
+    
+    def is_device_in_pending_list(self, device_path):
+        """Check if a device is in the pending cameras list."""
+        try:
+            pending_cameras = pending_camera_manager.get_pending_cameras()
+            for pending_cam in pending_cameras:
+                if pending_cam.get('device_path') == device_path:
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"Error checking pending list: {e}")
+            return False
     
     def handle_camera_list(self, msg):
         """Handle the /camera/list ROS topic message."""
