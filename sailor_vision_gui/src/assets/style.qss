@@ -1,19 +1,39 @@
 /* src/assets/style.qss */
 
+QMainWindow {
+    background-color: #f5f5f5;
+    padding: 0px;
+    margin: 0px;
+}
+
+QWidget#central_widget {
+    background-color: #f5f5f5;
+    margin: 0px;
+    padding: 0px;
+}
+
+#Sidebar {
+    background-color: white;
+    border-right: 1px solid #e0e0e0;
+}
 
 /* Header */
 QWidget#headerWidget {
     background-color: #ffffff;
     border-bottom: 1px solid #e0e0e0;
-    padding: 10px 15px;  /* Restore original padding */
-    /* Remove margin-bottom adjustment */
+    padding: 15px 20px;  /* Ajusté pour meilleur alignement */
+    min-height: 60px;    /* Hauteur fixe */
+    max-height: 60px;    /* Hauteur maximale */
+    margin: 0px;         /* Supprimer les marges */
 }
 
 QLabel#pageTitleLabel {
     font-size: 20px;
     font-weight: bold;
     color: #333333;
-}
+    margin: 0px;
+    padding: 0px;
+    }
 
 
 
@@ -23,20 +43,6 @@ QWidget {
     color: #333333;
 }
 
-QMainWindow {
-    background-color: #f5f5f5;
-}
-
-QWidget#central_widget {
-    background-color: #f5f5f5;
-    /* Remove margin-top and padding-top adjustments */
-}
-
-/* Sidebar styles */
-#Sidebar {
-    background-color: white;
-    border-right: 1px solid #e0e0e0;
-}
 
 #logoContainer {
     background-color: transparent;
@@ -88,14 +94,6 @@ QWidget#central_widget {
     font-size: 12px;
 }
 
-
-/* Header styles */
-
-#pageTitleLabel {
-    font-size: 20px;
-    font-weight: bold;
-    color: #333333;
-}
 #actionButton {
     background-color: #2196F3;
     color: white;
@@ -214,11 +212,6 @@ QWidget {
     padding-bottom: 5px;
 }
 
-/* Sidebar styles */
-#Sidebar {
-    background-color: white;
-    border-right: 1px solid #e0e0e0;
-}
 #sidebarButton {
     text-align: left;
     padding: 12px 15px;
@@ -426,28 +419,6 @@ QWidget {
 }
 
 
-/* Recording styles */
-#recordingItem {
-    background-color: white;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    padding: 10px;
-    margin-bottom: 10px;
-}
-
-#recordingItem:hover {
-    background-color: #f5f5f5;
-}
-
-#recordingTitle {
-    font-weight: bold;
-}
-
-#recordingTime {
-    color: #757575;
-    font-size: 12px;
-}
-
 /* Dialog styles */
 #dialogTitle {
     font-size: 18px;
@@ -609,7 +580,6 @@ QLineEdit:focus {
 
 QPushButton {
     background-color: #219ebc;
-    color: white;
     border: none;
     border-radius: 4px;
     padding: 10px;
@@ -643,6 +613,7 @@ QPushButton:disabled {
 }
 
 /* Sidebar Navigation */
+
 #sidebarWidget {
     background-color: #ffffff;
     border-right: 1px solid #e0e0e0;
@@ -733,7 +704,6 @@ QWidget#NavButton[active="true"] {
     text-decoration: underline;
 }
 
-/* Header */
 
 #searchBox {
     border: 1px solid #e0e0e0;
@@ -743,6 +713,9 @@ QWidget#NavButton[active="true"] {
     background-repeat: no-repeat;
     background-position: 10px center;
     width: 250px;
+    height: 20px;
+    margin: 0px;
+    
 }
 
 #searchBox:focus {
@@ -910,22 +883,6 @@ QWidget#NavButton[active="true"] {
     color: white;
 }
 
-/* Settings */
-.SettingsSection {
-    background-color: #ffffff;
-    border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 20px;
-    border: 1px solid #e0e0e0;
-}
-
-.SettingsSectionTitle {
-    font-size: 16px;
-    font-weight: bold;
-    color: #333333;
-    margin-bottom: 15px;
-    background-color : transparent;
-}
 
 QLabel[mandatory="true"]::after {
     content: " *";
@@ -1163,10 +1120,12 @@ QPushButton#AcknowledgeButton:hover {
 #profileMenu {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    padding: 5px;
-    position: absolute; /* Ensure absolute positioning */
-    /* Removed z-index property */
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    position: absolute;
+    min-width: 140px;
+    max-width: 150px;
 }
 
 #viewProfileButton, #logoutButton {
@@ -1174,23 +1133,13 @@ QPushButton#AcknowledgeButton:hover {
     color: #333333;
     border: none;
     text-align: left;
-    padding: 8px 12px;
+    padding: 10px 12px;
+    font-size: 13px;
+    border-radius: 4px;
+    margin: 1px;
 }
 
 #viewProfileButton:hover, #logoutButton:hover {
-    background-color: #f5f5f5;
-    color: #1E88E5;
-}
-
-#logoutButton {
-    background-color: transparent;
-    color: #333333;
-    border: none;
-    text-align: left;
-    padding: 8px 12px;
-}
-
-#logoutButton:hover {
-    background-color: #f5f5f5;
+    background-color: #f0f7ff;
     color: #1E88E5;
 }
