@@ -293,7 +293,7 @@ class Sidebar(QWidget):
                 self.set_default_avatar()
 
             self.avatar_label.setCursor(Qt.PointingHandCursor)
-            self.avatar_label.mousePressEvent = self.toggle_profile_menu  # Attach menu toggle
+            self.avatar_label.mousePressEvent = self.show_context_menu  # Attach context menu
 
             user_info = QWidget()
             user_info_layout = QVBoxLayout(user_info)
@@ -309,25 +309,6 @@ class Sidebar(QWidget):
             profile_layout.addStretch()
 
             layout.addWidget(profile_container)
-
-            # Profile menu (reparented to main window)
-            self.profile_menu = QFrame(self.window())  # Reparent to the main window
-            self.profile_menu.setObjectName("profileMenu")
-            self.profile_menu.setFrameShape(QFrame.StyledPanel)
-            self.profile_menu.setVisible(False)
-
-            menu_layout = QVBoxLayout(self.profile_menu)
-            menu_layout.setContentsMargins(0, 0, 0, 0)
-
-            view_profile_button = QPushButton("View Profile")
-            view_profile_button.setObjectName("viewProfileButton")
-            view_profile_button.clicked.connect(self.view_profile_clicked.emit)
-            menu_layout.addWidget(view_profile_button)
-
-            logout_button = QPushButton("Logout")
-            logout_button.setObjectName("logoutButton")
-            logout_button.clicked.connect(self.logout_clicked.emit)
-            menu_layout.addWidget(logout_button)
 
         self.setLayout(layout)
         self.set_active_button(self.dashboard_btn)
@@ -408,33 +389,58 @@ class Sidebar(QWidget):
     def on_profile_clicked(self):
         self.profile_clicked.emit()
 
-    def toggle_profile_menu(self, event):
-        """Toggle the profile menu when user avatar is clicked"""
+    def show_context_menu(self, event):
+        """Show context menu when user avatar is clicked"""
+        from PyQt5.QtWidgets import QMenu, QAction
+        
         # Ignore any automatic event, only process actual mouse clicks
         if event.type() != QEvent.MouseButtonPress:
             return
             
-        if self.profile_menu.isVisible():
-            self.profile_menu.setVisible(False)
-        else:
-            # Position the menu correctly relative to the avatar
-            avatar_pos = self.avatar_label.mapToGlobal(QPoint(0, 0))
-            window_pos = self.window().mapFromGlobal(avatar_pos)
-            menu_width = 150
-            menu_height = 80
-            
-            # Position to the right of the avatar and slightly below
-            menu_x = window_pos.x() + self.avatar_label.width()
-            menu_y = window_pos.y() + self.avatar_label.height()
-            
-            # Ensure menu doesn't go outside window boundaries
-            window_width = self.window().width()
-            if menu_x + menu_width > window_width:
-                menu_x = window_pos.x() - menu_width
-                
-            self.profile_menu.setGeometry(menu_x, menu_y, menu_width, menu_height)
-            self.profile_menu.setVisible(True)
-            self.profile_menu.raise_()
+        # Create context menu
+        context_menu = QMenu(self)
+        context_menu.setStyleSheet("""
+            QMenu {
+                background-color: #ffffff;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 4px;
+                min-width: 140px;
+            }
+            QMenu::item {
+                background-color: transparent;
+                color: #333333;
+                padding: 10px 12px;
+                font-size: 13px;
+                border-radius: 4px;
+                margin: 1px;
+            }
+            QMenu::item:hover {
+                background-color: #f0f7ff;
+                color: #1E88E5;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #e0e0e0;
+                margin: 2px 8px;
+            }
+        """)
+        
+        # Add View Profile action
+        view_profile_action = QAction("View Profile", self)
+        view_profile_action.triggered.connect(self.view_profile_clicked.emit)
+        context_menu.addAction(view_profile_action)
+        
+        # Add separator
+        context_menu.addSeparator()
+        
+        # Add Logout action
+        logout_action = QAction("Logout", self)
+        logout_action.triggered.connect(self.logout_clicked.emit)
+        context_menu.addAction(logout_action)
+        
+        # Show menu at cursor position
+        context_menu.exec_(event.globalPos())
         
     # Méthodes pour masquer/afficher les boutons en fonction des permissions
     def hide_dashboard_button(self):
@@ -466,33 +472,6 @@ class Sidebar(QWidget):
         """Masque le bouton Settings dans la barre latérale"""
         if hasattr(self, 'settings_btn'):
             self.settings_btn.setVisible(False)
-        """Toggle the visibility of the profile menu and position it above the avatar."""
-        if self.profile_menu.isVisible():
-            self.profile_menu.setVisible(False)
-        else:
-            # Ensure the profile menu is reparented to the main window
-            main_window = self.window()
-            if self.profile_menu.parent() != main_window:
-                self.profile_menu.setParent(main_window)
-                self.profile_menu.setWindowFlags(Qt.Popup)  # Ensure it behaves like a popup
-
-            # Get the global position of the avatar
-            avatar_geometry = self.avatar_label.geometry()
-            global_position = self.avatar_label.mapToGlobal(avatar_geometry.topLeft())
-
-            # Adjust the position to display the menu above the avatar
-            menu_x = global_position.x()
-            menu_y = global_position.y() - self.profile_menu.height()
-
-            # Ensure the menu is fully visible within the main window
-            main_window_geometry = main_window.geometry()
-            if menu_x + self.profile_menu.width() > main_window_geometry.right():
-                menu_x = main_window_geometry.right() - self.profile_menu.width()
-            if menu_y < main_window_geometry.top():
-                menu_y = main_window_geometry.top()
-
-            self.profile_menu.move(menu_x, menu_y)
-            self.profile_menu.setVisible(True)
 
 class CameraWidget(QFrame):
     def __init__(self, camera):
