@@ -2,8 +2,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QPushButton, QLineEdit, QFrame, QScrollArea,
                             QProgressBar, QFileDialog, QMessageBox, QDialog,
                             QComboBox, QSpinBox, QCheckBox, QTabWidget,
-                            QGroupBox, QSlider, QTextEdit, QGridLayout)
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSize
+                            QGroupBox, QSlider, QTextEdit, QGridLayout, QProgressDialog)
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSize, QDateTime
 from PyQt5.QtGui import QPixmap, QIcon, QPainter, QPainterPath, QRegion, QColor, QFont
 import os
 
@@ -15,7 +15,6 @@ from services.logging_service import LoggingService
 from services.realtime_log_handler import log_manager
 from components.shared import HeaderWidget
 from components.camera_dialogs import (CameraConfigDialog, MaintenanceScheduleDialog)
-from components.logging_widgets import ServiceStatusWidget, LogViewerWidget
 from utils import hash_password
 from models import User, Camera, StorageType
 from database import create_new_session
@@ -62,6 +61,9 @@ class SettingsScreen(QWidget):
         self.storage_service = None
         self.pending_camera_manager = None
         self.services_initialized = False
+        
+        # Initialiser les timers à None
+        self.service_update_timer = None
         
         print("[Settings] Programmation du chargement initial...")
         # Charger uniquement les données du profil utilisateur par défaut
@@ -1018,774 +1020,1052 @@ class SettingsScreen(QWidget):
         return badge
         
     def create_system_tab(self):
-        """Créer l'onglet Reports & Logging avec le style UserCard professionnel"""
+        """Créer l'onglet Reports & Logging avec un style simple comme NotificationManager"""
         system_tab = QWidget()
         system_layout = QVBoxLayout(system_tab)
-        system_layout.setContentsMargins(30, 30, 30, 30)
-        system_layout.setSpacing(0)
+        system_layout.setContentsMargins(30, 10, 30, 30)  # Mêmes margins que Camera Management
+        system_layout.setSpacing(5)  # Réduire l'espacement principal de 25 à 8
+
+        # Scroll area for system tab (identique à Camera Management)
+        system_scroll = QScrollArea()
+        system_scroll.setWidgetResizable(True)
+        system_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        system_scroll.setFrameShape(QFrame.NoFrame)
+        system_scroll.setStyleSheet("background-color: #f5f5f5; border: none;")
         
-        # Container principal avec le style UserCard
-        main_container = QFrame()
-        main_container.setStyleSheet("""
-            QFrame {
-                background-color: #ffffff;
+        # System settings container
+        system_container = QWidget()
+        system_container_layout = QVBoxLayout(system_container)
+        system_container_layout.setContentsMargins(0, 0, 0, 0)
+        system_container_layout.setSpacing(5)  # Réduire l'espacement entre sections de 25 à 12
+        
+        # === SECTION STATUS DES SERVICES (Style simple) ===
+        services_section = QFrame()
+        services_section.setObjectName("activeSection")
+        services_section_layout = QVBoxLayout(services_section)
+        services_section_layout.setSpacing(5)  # Réduire de 15 à 10
+        
+        # En-tête de section
+        services_header = QLabel("Services Status")
+        services_header.setObjectName("subSectionHeader")
+        services_section_layout.addWidget(services_header)
+        
+        # Conteneur pour les widgets de services (sera rempli dynamiquement)
+        self.services_container = QWidget()
+        self.services_container_layout = QVBoxLayout(self.services_container)
+        self.services_container_layout.setContentsMargins(0, 0, 0, 0)
+        self.services_container_layout.setSpacing(8)
+        
+        services_section_layout.addWidget(self.services_container)
+        
+        # Initialiser le monitoring des services
+        self.init_service_monitoring()
+        
+        # Timer pour mise à jour automatique des services
+        self.service_update_timer = QTimer()
+        self.service_update_timer.timeout.connect(self.update_service_widgets)
+        self.service_update_timer.start(5000)  # Mise à jour toutes les 5 secondes
+        
+        system_container_layout.addWidget(services_section)
+        
+        # === SECTION LOGS RÉCENTS (Style simple) ===
+        logs_section = QFrame()
+        logs_section.setObjectName("activeSection")
+        logs_section_layout = QVBoxLayout(logs_section)
+        logs_section_layout.setSpacing(5)  # Réduire de 15 à 8
+        
+        # En-tête de section
+        logs_header = QLabel("Recent Logs")
+        logs_header.setObjectName("subSectionHeader")
+        logs_section_layout.addWidget(logs_header)
+        
+        # Widget de logs simple
+        log_widget = self.create_simple_log_widget()
+        logs_section_layout.addWidget(log_widget)
+        
+        system_container_layout.addWidget(logs_section)
+        
+        # === SECTION REAL-TIME LOGS ===
+        realtime_logs_section = QFrame()
+        realtime_logs_section.setObjectName("activeSection")
+        realtime_logs_section_layout = QVBoxLayout(realtime_logs_section)
+        realtime_logs_section_layout.setSpacing(5)  # Réduire de 15 à 8
+        
+        # En-tête de section
+        realtime_header = QLabel("Real-Time System Logs")
+        realtime_header.setObjectName("subSectionHeader")
+        realtime_logs_section_layout.addWidget(realtime_header)
+        
+        # Widget de logs en temps réel
+        realtime_log_widget = self.create_realtime_log_widget()
+        realtime_logs_section_layout.addWidget(realtime_log_widget)
+        
+        system_container_layout.addWidget(realtime_logs_section)
+        system_container_layout.addWidget(logs_section)
+        
+        # === SECTION AUTHENTIFICATION RÉCENTE ===
+        auth_section = QFrame()
+        auth_section.setObjectName("activeSection")
+        auth_section_layout = QVBoxLayout(auth_section)
+        auth_section_layout.setSpacing(5)  # Réduire de 15 à 8
+        
+        # En-tête de section
+        auth_header = QLabel("Recent Authentication Activity")
+        auth_header.setObjectName("subSectionHeader")
+        auth_section_layout.addWidget(auth_header)
+        
+        # Widget d'authentification
+        auth_widget = self.create_auth_activity_widget()
+        auth_section_layout.addWidget(auth_widget)
+        
+        system_container_layout.addWidget(auth_section)
+        
+        # === SECTION ALERTES SYSTÈME ===
+        alerts_section = QFrame()
+        alerts_section.setObjectName("activeSection")
+        alerts_section_layout = QVBoxLayout(alerts_section)
+        alerts_section_layout.setSpacing(5)  # Réduire de 15 à 8
+        
+        # En-tête de section
+        alerts_header = QLabel("System Alerts & Notifications")
+        alerts_header.setObjectName("subSectionHeader")
+        alerts_section_layout.addWidget(alerts_header)
+        
+        # Widget d'alertes
+        alerts_widget = self.create_system_alerts_widget()
+        alerts_section_layout.addWidget(alerts_widget)
+        
+        system_container_layout.addWidget(alerts_section)
+        
+        # === SECTION ACTIONS RAPIDES (Style simple) ===
+        actions_section = QFrame()
+        actions_section.setObjectName("activeSection")
+        actions_section_layout = QVBoxLayout(actions_section)
+        actions_section_layout.setSpacing(5)  # Réduire de 15 à 8
+        
+        # En-tête de section
+        actions_header = QLabel("Quick Actions")
+        actions_header.setObjectName("subSectionHeader")
+        actions_section_layout.addWidget(actions_header)
+        
+        # Boutons d'actions
+        actions_widget = self.create_simple_actions_widget()
+        actions_section_layout.addWidget(actions_widget)
+        
+        system_container_layout.addWidget(actions_section)
+        
+        # Configurer le scroll area
+        system_scroll.setWidget(system_container)
+        system_layout.addWidget(system_scroll)
+        
+        # Ajouter l'onglet au TabWidget
+        self.tabs.addTab(system_tab, "Reports")
+    
+    def init_service_monitoring(self):
+        """Initialiser le système de monitoring des services"""
+        self.service_widgets = {}  # Dictionnaire pour stocker les widgets par nom de service
+        
+        # Créer les widgets initiaux
+        self.update_service_widgets()
+    
+    def get_real_service_status(self):
+        """Obtenir le vrai statut des services en temps réel"""
+        services_status = []
+        
+        try:
+            # 1. Camera Service - Vérifier les services de caméras
+            camera_count = 0
+            camera_status = "Unknown"
+            camera_details = "Checking..."
+            
+            if hasattr(self, 'camera_service') and self.camera_service:
+                try:
+                    cameras = self.camera_service.get_all_cameras()
+                    active_cameras = [cam for cam in cameras if cam.status == 'active']
+                    camera_count = len(active_cameras)
+                    
+                    if camera_count > 0:
+                        camera_status = "Running"
+                        camera_details = f"{camera_count} cameras active"
+                    else:
+                        camera_status = "Warning"
+                        camera_details = "No active cameras"
+                except Exception as e:
+                    camera_status = "Error"
+                    camera_details = f"Service error: {str(e)[:30]}..."
+            
+            services_status.append(("Camera Service", camera_status, camera_details))
+            
+            # 2. Storage Service - Vérifier l'espace disque
+            storage_status = "Unknown"
+            storage_details = "Checking..."
+            
+            if hasattr(self, 'storage_service') and self.storage_service:
+                try:
+                    storage_info = self.storage_service.get_storage_info()
+                    used_percentage = storage_info.get('used_percentage', 0)
+                    
+                    if used_percentage < 75:
+                        storage_status = "Running"
+                    elif used_percentage < 90:
+                        storage_status = "Warning"
+                    else:
+                        storage_status = "Error"
+                    
+                    storage_details = f"{used_percentage:.1f}% disk usage"
+                except Exception as e:
+                    storage_status = "Error"
+                    storage_details = f"Storage check failed"
+            
+            services_status.append(("Storage Service", storage_status, storage_details))
+            
+            # 3. AI Detection - Vérifier le service YOLO
+            ai_status = "Unknown"
+            ai_details = "Checking..."
+            
+            try:
+                # Vérifier si le modèle YOLO est chargé et opérationnel
+                import os
+                model_path = "/home/abirc240/Desktop/sailor-vision-ai/yolo11n.pt"
+                if os.path.exists(model_path):
+                    ai_status = "Running"
+                    ai_details = "YOLO model loaded"
+                else:
+                    ai_status = "Warning"
+                    ai_details = "Model file not found"
+            except Exception as e:
+                ai_status = "Error"
+                ai_details = "AI service unavailable"
+            
+            services_status.append(("AI Detection", ai_status, ai_details))
+            
+            # 4. User Authentication - Vérifier la base de données utilisateurs
+            auth_status = "Unknown"
+            auth_details = "Checking..."
+            
+            if hasattr(self, 'user_service') and self.user_service:
+                try:
+                    # Tester une requête simple sur la base de données
+                    users_count = len(self.user_service.get_all_users())
+                    auth_status = "Running"
+                    auth_details = f"{users_count} users in system"
+                except Exception as e:
+                    auth_status = "Error"
+                    auth_details = "Database connection failed"
+            
+            services_status.append(("User Authentication", auth_status, auth_details))
+            
+            # 5. Network Service - Vérifier la connectivité
+            network_status = "Unknown"
+            network_details = "Checking..."
+            
+            try:
+                import subprocess
+                import platform
+                
+                # Ping test pour vérifier la connectivité
+                param = "-n" if platform.system().lower() == "windows" else "-c"
+                command = ["ping", param, "1", "8.8.8.8"]
+                
+                result = subprocess.run(command, capture_output=True, text=True, timeout=3)
+                if result.returncode == 0:
+                    network_status = "Running"
+                    network_details = "Network connectivity OK"
+                else:
+                    network_status = "Warning"
+                    network_details = "Limited connectivity"
+            except Exception as e:
+                network_status = "Error"
+                network_details = "Network check failed"
+            
+            services_status.append(("Network Service", network_status, network_details))
+            
+            # 6. Database Service - Vérifier la connexion à la base de données
+            db_status = "Unknown"
+            db_details = "Checking..."
+            
+            try:
+                from database import create_new_session
+                session = create_new_session()
+                if session:
+                    # Test simple de la base de données
+                    session.execute("SELECT 1")
+                    session.close()
+                    db_status = "Running"
+                    db_details = "Database connection OK"
+                else:
+                    db_status = "Error"
+                    db_details = "Cannot create session"
+            except Exception as e:
+                db_status = "Error"
+                db_details = "Database error"
+            
+            services_status.append(("Database Service", db_status, db_details))
+            
+        except Exception as e:
+            print(f"[Settings] Error getting service status: {e}")
+        
+        return services_status
+    
+    def update_service_widgets(self):
+        """Mettre à jour les widgets de services avec des données en temps réel"""
+        try:
+            # Obtenir le statut réel des services
+            services_data = self.get_real_service_status()
+            
+            # Vider le conteneur actuel
+            for i in reversed(range(self.services_container_layout.count())):
+                child = self.services_container_layout.itemAt(i).widget()
+                if child:
+                    child.setParent(None)
+            
+            # Recréer les widgets avec les nouvelles données
+            for name, status, details in services_data:
+                # Déterminer la couleur selon le statut
+                color = self.get_status_color(status)
+                
+                # Créer le widget avec les vraies données
+                service_widget = self.create_enhanced_service_widget(name, status, color, details)
+                self.services_container_layout.addWidget(service_widget)
+                
+                # Stocker une référence au widget
+                self.service_widgets[name] = service_widget
+            
+            print(f"[Settings] Service widgets updated with real-time data")
+            
+        except Exception as e:
+            print(f"[Settings] Error updating service widgets: {e}")
+    
+    def get_status_color(self, status):
+        """Obtenir la couleur selon le statut"""
+        status_colors = {
+            "Running": "#4caf50",   # Vert
+            "Warning": "#ff9800",   # Orange
+            "Error": "#f44336",     # Rouge
+            "Unknown": "#9e9e9e"    # Gris
+        }
+        return status_colors.get(status, "#9e9e9e")
+    
+    def create_enhanced_service_widget(self, name, status, color, details):
+        """Créer un widget de service amélioré avec bouton details et plus d'informations"""
+        widget = QFrame()
+        widget.setFixedHeight(85)  # Légèrement plus haut pour les boutons
+        widget.setStyleSheet(f"""
+            QFrame {{
+                background-color: #e3f2fd;
+                border-left: 4px solid {color};
                 border-radius: 8px;
-                border: 1px solid #e0e0e0;
+                margin: 2px 0px;
                 padding: 0px;
-            }
+            }}
         """)
         
-        main_layout = QVBoxLayout(main_container)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-        
-        # Header simple et clean (sans icône)
-        header_frame = QFrame()
-        header_frame.setStyleSheet("""
-            QFrame {
-                background-color: transparent;
-                border: none;
-                padding: 25px 25px 15px 25px;
-            }
-        """)
-        header_layout = QVBoxLayout(header_frame)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(8)
-        
-        # Titre principal
-        title_label = QLabel("Reports & Logging")
-        title_label.setStyleSheet("""
-            QLabel {
-                font-size: 20px;
-                font-weight: bold;
-                color: #333333;
-                margin: 0px;
-                padding: 0px;
-            }
-        """)
-        header_layout.addWidget(title_label)
-        
-        # Description
-        desc_label = QLabel("Monitor system services and view real-time logs")
-        desc_label.setStyleSheet("""
-            QLabel {
-                font-size: 14px;
-                color: #8d99ae;
-                margin: 0px;
-                padding: 0px;
-            }
-        """)
-        header_layout.addWidget(desc_label)
-        
-        main_layout.addWidget(header_frame)
-        
-        # Scroll area pour le contenu
-        content_scroll = QScrollArea()
-        content_scroll.setWidgetResizable(True)
-        content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        content_scroll.setFrameShape(QFrame.NoFrame)
-        content_scroll.setStyleSheet("""
-            QScrollArea {
-                background-color: transparent;
-                border: none;
-            }
-            QScrollBar:vertical {
-                background: #f5f5f5;
-                width: 8px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical {
-                background: #c0c0c0;
-                border-radius: 4px;
-                min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #a0a0a0;
-            }
-        """)
-        
-        # Widget de contenu
-        content_widget = QWidget()
-        content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(25, 0, 25, 25)
-        content_layout.setSpacing(25)
-        
-        # System Services Status
-        services_section = self.create_services_status_section()
-        content_layout.addWidget(services_section)
-        
-        # Logs Section
-        logs_section = self.create_logging_system_section()
-        content_layout.addWidget(logs_section)
-        
-        content_scroll.setWidget(content_widget)
-        main_layout.addWidget(content_scroll)
-        
-        system_layout.addWidget(main_container)
-        
-        # Ajouter l'onglet
-        self.tabs.addTab(system_tab, "Reports & Logging")
-        
-        # Charger les styles modernes
-        self._load_logging_styles()
-    
-    def create_services_status_section(self):
-        """Créer la section Status des Services avec le style UserCard"""
-        section = QFrame()
-        section.setStyleSheet("""
-            QFrame {
-                background-color: transparent;
-                border: none;
-                margin: 0px;
-                padding: 0px;
-            }
-        """)
-        
-        layout = QVBoxLayout(section)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(20)
-        
-        # Header section
-        header_frame = QFrame()
-        header_frame.setStyleSheet("""
-            QFrame {
-                background-color: transparent;
-                border: none;
-                padding: 0px;
-            }
-        """)
-        header_layout = QHBoxLayout(header_frame)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(15)
-        
-        # Titre de section
-        title_label = QLabel("System Services Status")
-        title_label.setStyleSheet("""
-            QLabel {
-                font-size: 18px;
-                font-weight: bold;
-                color: #333333;
-                margin: 0px;
-                padding: 0px;
-            }
-        """)
-        header_layout.addWidget(title_label)
-        
-        header_layout.addStretch()
-        
-        # Status global
-        self.services_status_label = QLabel("� 6/6 services operational")
-        self.services_status_label.setStyleSheet("""
-            QLabel {
-                font-size: 13px;
-                color: #8d99ae;
-                margin: 0px;
-                padding: 0px;
-            }
-        """)
-        header_layout.addWidget(self.services_status_label)
-        
-        # Dernière vérification
-        self.services_last_check_label = QLabel("Last check: 18:42:28")
-        self.services_last_check_label.setStyleSheet("""
-            QLabel {
-                font-size: 13px;
-                color: #8d99ae;
-                margin: 0px;
-                padding: 0px;
-            }
-        """)
-        header_layout.addWidget(self.services_last_check_label)
-        
-        # Bouton refresh style UserCard
-        refresh_btn = QPushButton("🔄 Refresh")
-        refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #219ebc;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 15px;
-                font-size: 13px;
-                font-weight: bold;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #1b89a7;
-            }
-            QPushButton:pressed {
-                background-color: #177992;
-            }
-        """)
-        refresh_btn.clicked.connect(self.refresh_services_status)
-        header_layout.addWidget(refresh_btn)
-        
-        layout.addWidget(header_frame)
-        
-        # Grid pour les cartes de service
-        services_grid_widget = QWidget()
-        services_grid_widget.setStyleSheet("""
-            QWidget {
-                background-color: transparent;
-                border: none;
-            }
-        """)
-        
-        self.services_grid = QGridLayout(services_grid_widget)
-        self.services_grid.setSpacing(15)
-        self.services_grid.setContentsMargins(0, 0, 0, 0)
-        
-        # Créer les cartes de service style UserCard
-        self.create_service_cards()
-        
-        layout.addWidget(services_grid_widget)
-        
-        return section
-    
-    def create_service_cards(self):
-        """Créer les cartes de service dans le style UserCard"""
-        services = [
-            ("YOLO Detection", "operational", "Processes: 1", "✅"),
-            ("Camera Detection", "operational", "Active Cameras: 0 | Total Cameras: 6", "✅"),
-            ("Alert Processing", "operational", "Unacknowledged Alerts: 0", "✅"),
-            ("ROS Communication", "operational", "Connectivity: assumed good", "✅"),
-            ("Storage & Database", "operational", "Disk Usage Percent: 38.1% | Free Space Gb: 55.3", "✅"),
-            ("User & Authentication", "operational", "Auth Errors 1H: 0", "✅")
-        ]
-        
-        # Disposer les cartes en grille 2x3
-        for i, (name, status, details, icon) in enumerate(services):
-            row = i // 2
-            col = i % 2
-            
-            card = self.create_service_card_usercard_style(name, status, details, icon)
-            self.services_grid.addWidget(card, row, col)
-    
-    def create_service_card_usercard_style(self, name, status, details, icon):
-        """Créer une carte de service dans le style UserCard"""
-        card = QFrame()
-        card.setStyleSheet("""
-            QFrame {
-                background-color: #ffffff;
-                border-radius: 8px;
-                border: 1px solid #e0e0e0;
-                padding: 15px;
-                margin: 0px;
-            }
-            QFrame:hover {
-                border-color: #219ebc;
-                background-color: #f8f9fa;
-            }
-        """)
-        card.setMinimumHeight(120)
-        
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        
-        # Header avec nom et icône
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Nom du service
-        name_label = QLabel(name)
-        name_label.setStyleSheet("""
-            QLabel {
-                font-size: 14px;
-                font-weight: bold;
-                color: #333333;
-                margin: 0px;
-                padding: 0px;
-            }
-        """)
-        header_layout.addWidget(name_label)
-        
-        header_layout.addStretch()
-        
-        # Icône de statut
-        icon_label = QLabel(icon)
-        icon_label.setStyleSheet("""
-            QLabel {
-                font-size: 16px;
-                margin: 0px;
-                padding: 0px;
-            }
-        """)
-        header_layout.addWidget(icon_label)
-        
-        layout.addLayout(header_layout)
-        
-        # Status avec badge style UserRole
-        status_layout = QHBoxLayout()
-        status_layout.setContentsMargins(0, 0, 0, 0)
-        
-        status_badge = QLabel("Operational")
-        if status == "operational":
-            status_badge.setStyleSheet("""
-                QLabel {
-                    background-color: #e6f4f7;
-                    color: #219ebc;
-                    padding: 3px 8px;
-                    border-radius: 10px;
-                    font-size: 11px;
-                    font-weight: bold;
-                    margin: 0px;
-                }
-            """)
-        
-        status_layout.addWidget(status_badge)
-        status_layout.addStretch()
-        
-        layout.addLayout(status_layout)
-        
-        # Détails
-        details_label = QLabel(details)
-        details_label.setStyleSheet("""
-            QLabel {
-                color: #8d99ae;
-                font-size: 12px;
-                margin: 0px;
-                padding: 0px;
-            }
-        """)
-        details_label.setWordWrap(True)
-        layout.addWidget(details_label)
-        
-        return card
-    
-    def create_service_cards(self):
-        """Créer les cartes de service dans le style UserCard"""
-        services = [
-            ("YOLO Detection", "operational", "Processes: 1"),
-            ("Camera Detection", "operational", "Active Cameras: 0 | Total Cameras: 6"),
-            ("Alert Processing", "operational", "Unacknowledged Alerts: 0"),
-            ("ROS Communication", "operational", "Connectivity: assumed_good"),
-            ("Storage & Database", "operational", "Disk Usage Percent: 38.1% | Free Space Gb: 55.3"),
-            ("User & Authentication", "operational", "Auth Errors 1H: 0")
-        ]
-        
-        for i, (name, status, details) in enumerate(services):
-            card = self.create_modern_service_card(name, status, details)
-            row = i // 2
-            col = i % 2
-            self.services_grid.addWidget(card, row, col)
-            
-        # Configurer les colonnes pour qu'elles s'étendent également
-        self.services_grid.setColumnStretch(0, 1)
-        self.services_grid.setColumnStretch(1, 1)
-    
-    def create_modern_service_card(self, name, status, details):
-        """Créer une carte de service moderne avec style professionnel"""
-        card = QFrame()
-        card.setFixedHeight(100)  # Hauteur fixe pour uniformité
-        card.setStyleSheet("""
-            QFrame {
-                background: qlineargradient(
-                    x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #ffffff,
-                    stop: 1 #f8f9fa
-                );
-                border: 1px solid #e3e8ee;
-                border-radius: 10px;
-                margin: 2px;
-            }
-            QFrame:hover {
-                border-color: #1e88e5;
-                background: qlineargradient(
-                    x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #ffffff,
-                    stop: 1 #f0f8ff
-                );
-            }
-        """)
-        
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(6)
-        
-        # Header avec nom et icône de statut
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Nom du service
-        name_label = QLabel(name)
-        name_label.setStyleSheet("""
-            font-size: 14px;
-            font-weight: 600;
-            color: #2c3e50;
-            margin: 0px;
-        """)
-        name_label.setWordWrap(True)
-        header_layout.addWidget(name_label)
-        
-        # Icône de statut
-        status_icon = self.get_status_icon(status)
-        icon_label = QLabel(status_icon)
-        icon_label.setStyleSheet("font-size: 16px; margin-left: 5px;")
-        header_layout.addWidget(icon_label)
-        
-        layout.addLayout(header_layout)
-        
-        # Badge de statut
-        status_label = QLabel(status.title())
-        status_label.setAlignment(Qt.AlignCenter)
-        status_label.setFixedHeight(22)
-        
-        if status == "operational":
-            status_label.setStyleSheet("""
-                background-color: #d4edda;
-                color: #155724;
-                border: 1px solid #c3e6cb;
-                border-radius: 11px;
-                font-size: 12px;
-                font-weight: 600;
-                padding: 2px 8px;
-            """)
-        elif status == "warning":
-            status_label.setStyleSheet("""
-                background-color: #fff3cd;
-                color: #856404;
-                border: 1px solid #ffeaa7;
-                border-radius: 11px;
-                font-size: 12px;
-                font-weight: 600;
-                padding: 2px 8px;
-            """)
-        elif status == "error":
-            status_label.setStyleSheet("""
-                background-color: #f8d7da;
-                color: #721c24;
-                border: 1px solid #f5c6cb;
-                border-radius: 11px;
-                font-size: 12px;
-                font-weight: 600;
-                padding: 2px 8px;
-            """)
-        else:  # checking
-            status_label.setStyleSheet("""
-                background-color: #e2e6ea;
-                color: #6c757d;
-                border: 1px solid #ced4da;
-                border-radius: 11px;
-                font-size: 12px;
-                font-weight: 600;
-                padding: 2px 8px;
-            """)
-            
-        layout.addWidget(status_label)
-        
-        # Détails
-        details_label = QLabel(details)
-        details_label.setStyleSheet("""
-            font-size: 11px;
-            color: #6c757d;
-            line-height: 1.3;
-        """)
-        details_label.setWordWrap(True)
-        details_label.setAlignment(Qt.AlignTop)
-        layout.addWidget(details_label, 1)  # Stretch pour remplir
-        
-        # Tooltip
-        card.setToolTip(f"{name}\nStatus: {status}\n{details}")
-        
-        return card
-    
-    def create_log_viewer_section(self):
-        """Créer la section Log Viewer qui s'étend"""
-        section = QFrame()
-        section.setObjectName("log-viewer")
-        section.setStyleSheet("""
-            #log-viewer {
-                background: white;
-                border-radius: 12px;
-                border: 1px solid #e3e8ee;
-                margin: 0px;
-            }
-        """)
-        
-        layout = QVBoxLayout(section)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        
-        # Header avec contrôles
-        header = QFrame()
-        header.setStyleSheet("""
-            background: qlineargradient(
-                x1: 0, y1: 0, x2: 0, y2: 1,
-                stop: 0 #f8f9fa,
-                stop: 1 #e9ecef
-            );
-            border-top-left-radius: 12px;
-            border-top-right-radius: 12px;
-            border-bottom: 1px solid #dee2e6;
-        """)
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(20, 15, 20, 15)
-        
-        # Icône et titre
-        icon_label = QLabel("📝")
-        icon_label.setStyleSheet("font-size: 20px; margin-right: 8px;")
-        header_layout.addWidget(icon_label)
-        
-        title_label = QLabel("Real-time System Logs")
-        title_label.setStyleSheet("""
-            font-size: 18px;
-            font-weight: 600;
-            color: #34495e;
-            margin: 0px;
-        """)
-        header_layout.addWidget(title_label)
-        
-        header_layout.addStretch()
-        
-        # Indicateur Live
-        live_indicator = QLabel("🟢 Live")
-        live_indicator.setStyleSheet("""
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-            border-radius: 12px;
-            padding: 4px 12px;
-            font-size: 12px;
-            font-weight: 600;
-        """)
-        header_layout.addWidget(live_indicator)
-        
-        layout.addWidget(header)
-        
-        # Barre de filtres
-        filter_bar = self.create_log_filter_bar()
-        layout.addWidget(filter_bar)
-        
-        # Zone de logs qui s'étend
-        log_area = QWidget()
-        log_area.setStyleSheet("background: white;")
-        log_layout = QVBoxLayout(log_area)
-        log_layout.setContentsMargins(20, 15, 20, 15)
-        
-        # Liste des logs avec police monospace
-        self.log_display = QLabel("🟡 15:01:10 | YOLODetection | No YOLO topics subscribed via ROSImageBridge")
-        self.log_display.setStyleSheet("""
-            font-family: 'SF Mono', 'Monaco', 'Consolas', 'Courier New', monospace;
-            font-size: 13px;
-            color: #495057;
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 6px;
-            padding: 15px;
-            line-height: 1.6;
-        """)
-        self.log_display.setWordWrap(True)
-        self.log_display.setAlignment(Qt.AlignTop)
-        log_layout.addWidget(self.log_display, 1)  # Stretch pour remplir
-        
-        layout.addWidget(log_area, 1)  # Stretch pour remplir
-        
-        # Footer avec statistiques
-        footer = QFrame()
-        footer.setStyleSheet("""
-            background: #f8f9fa;
-            border-top: 1px solid #e9ecef;
-            border-bottom-left-radius: 12px;
-            border-bottom-right-radius: 12px;
-        """)
-        footer_layout = QHBoxLayout(footer)
-        footer_layout.setContentsMargins(20, 10, 20, 10)
-        
-        stats_label = QLabel("📊 Logs: 0 | Last update: Never")
-        stats_label.setStyleSheet("color: #6c757d; font-size: 12px;")
-        footer_layout.addWidget(stats_label)
-        footer_layout.addStretch()
-        
-        layout.addWidget(footer)
-        
-        return section
-    
-    def create_log_filter_bar(self):
-        """Créer la barre de filtres"""
-        filter_bar = QFrame()
-        filter_bar.setStyleSheet("""
-            background: #fafbfc;
-            border-bottom: 1px solid #e9ecef;
-        """)
-        layout = QHBoxLayout(filter_bar)
-        layout.setContentsMargins(20, 15, 20, 15)
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(15, 12, 15, 12)
         layout.setSpacing(15)
         
-        # Level filter
-        layout.addWidget(QLabel("Level:"))
-        level_combo = QComboBox()
-        level_combo.addItems(["All Levels", "ERROR", "WARNING", "INFO", "DEBUG"])
-        level_combo.setCurrentText("All Levels")
-        level_combo.setStyleSheet("""
-            background: white;
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            padding: 6px 12px;
-            font-size: 13px;
-            min-width: 100px;
+        # Icône de service avec indicateur de statut
+        icon_container = QWidget()
+        icon_container.setFixedSize(40, 40)
+        icon_container.setStyleSheet(f"""
+            background-color: {color};
+            border-radius: 20px;
+            border: none;
         """)
-        layout.addWidget(level_combo)
+        icon_layout = QVBoxLayout(icon_container)
+        icon_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Period filter
-        layout.addWidget(QLabel("Period:"))
-        period_combo = QComboBox()
-        period_combo.addItems(["Last Week", "Last 24 Hours", "Last Hour"])
-        period_combo.setCurrentText("Last 24 Hours")
-        period_combo.setStyleSheet("""
-            background: white;
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            padding: 6px 12px;
-            font-size: 13px;
-            min-width: 120px;
-        """)
-        layout.addWidget(period_combo)
+        service_icons = {
+            "Camera Service": "📹",
+            "Storage Service": "�", 
+            "AI Detection": "🔍",
+            "User Authentication": "🔐",
+            "Network Service": "🌐",
+            "Database Service": "🗄️"
+        }
         
-        # Source filter
-        layout.addWidget(QLabel("Source:"))
-        source_combo = QComboBox()
-        source_combo.addItems(["All Sources", "YOLODetection", "Camera", "Alert", "Database"])
-        source_combo.setCurrentText("All Sources")
-        source_combo.setStyleSheet("""
-            background: white;
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            padding: 6px 12px;
-            font-size: 13px;
-            min-width: 100px;
+        icon_label = QLabel(service_icons.get(name, "⚙️"))
+        icon_label.setStyleSheet("""
+            font-size: 18px;
+            color: white;
+            background-color: transparent;
+            border: none;
         """)
-        layout.addWidget(source_combo)
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_layout.addWidget(icon_label)
+        
+        layout.addWidget(icon_container)
+        
+        # Conteneur pour le texte
+        text_container = QWidget()
+        text_container.setStyleSheet("background-color: transparent; border: none;")
+        text_layout = QVBoxLayout(text_container)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(2)
+        
+        # Nom du service
+        name_label = QLabel(name)
+        name_label.setStyleSheet("""
+            color: #1565C0;
+            font-weight: bold;
+            font-size: 14px;
+            background-color: transparent;
+            border: none;
+        """)
+        text_layout.addWidget(name_label)
+        
+        # Status et détails du service
+        status_details = QLabel(f"Status: {status} • {details}")
+        status_details.setStyleSheet("""
+            color: #424242;
+            font-size: 11px;
+            background-color: transparent;
+            border: none;
+        """)
+        text_layout.addWidget(status_details)
+        
+        layout.addWidget(text_container)
+        layout.addStretch()
+        
+        # Conteneur pour les actions
+        actions_container = QWidget()
+        actions_container.setStyleSheet("background-color: transparent; border: none;")
+        actions_layout = QVBoxLayout(actions_container)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.setSpacing(4)
+        
+        # Badge de statut
+        status_badge = QLabel(status)
+        status_badge.setStyleSheet(f"""
+            background-color: {color};
+            color: white;
+            border: none;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 500;
+            font-size: 10px;
+            min-width: 50px;
+            text-align: center;
+        """)
+        status_badge.setAlignment(Qt.AlignCenter)
+        actions_layout.addWidget(status_badge)
+        
+        # Bouton Details (seulement pour Warning/Error)
+        if status in ["Warning", "Error"]:
+            details_btn = QPushButton("Details")
+            details_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #1976D2;
+                    color: white;
+                    border: none;
+                    padding: 4px 8px;
+                    border-radius: 3px;
+                    font-weight: 500;
+                    font-size: 10px;
+                    min-width: 50px;
+                }
+                QPushButton:hover {
+                    background-color: #1565C0;
+                }
+            """)
+            details_btn.clicked.connect(lambda: self.show_service_details(name, status, details))
+            actions_layout.addWidget(details_btn)
+        
+        layout.addWidget(actions_container)
+        
+        return widget
+    
+    def create_auth_activity_widget(self):
+        """Créer un widget d'activité d'authentification récente"""
+        widget = QFrame()
+        widget.setStyleSheet("""
+            QFrame {
+                background-color: #e3f2fd;
+                border-left: 4px solid #2196F3;
+                border-radius: 8px;
+                margin: 2px 0px;
+                padding: 10px;
+            }
+        """)
+        
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(15, 10, 15, 10)
+        layout.setSpacing(10)
+        
+        # En-tête avec statistiques
+        header_layout = QHBoxLayout()
+        
+        auth_title = QLabel("🔐 Authentication Logs")
+        auth_title.setStyleSheet("""
+            color: #1565C0;
+            font-weight: bold;
+            font-size: 14px;
+            background-color: transparent;
+            border: none;
+        """)
+        header_layout.addWidget(auth_title)
+        header_layout.addStretch()
+        
+        # Statistiques rapides
+        stats_layout = QHBoxLayout()
+        stats_layout.setSpacing(15)
+        
+        # Connexions réussies
+        success_stat = QLabel("✅ 24 Success")
+        success_stat.setStyleSheet("""
+            background-color: #4caf50;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+        """)
+        stats_layout.addWidget(success_stat)
+        
+        # Échecs
+        failed_stat = QLabel("❌ 5 Failed")
+        failed_stat.setStyleSheet("""
+            background-color: #f44336;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+        """)
+        stats_layout.addWidget(failed_stat)
+        
+        header_layout.addLayout(stats_layout)
+        layout.addLayout(header_layout)
+        
+        # Liste des connexions récentes
+        auth_list = QFrame()
+        auth_list.setStyleSheet("""
+            background-color: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px;
+        """)
+        auth_list.setFixedHeight(180)  # Augmenté de 120 à 180
+        
+        auth_list_layout = QVBoxLayout(auth_list)
+        auth_list_layout.setContentsMargins(8, 5, 8, 5)
+        auth_list_layout.setSpacing(3)
+        
+        # Données d'exemple d'authentification
+        auth_data = [
+            ("admin", "14:32:15", "Success", "127.0.0.1"),
+            ("operator1", "14:30:22", "Success", "192.168.1.45"),
+            ("guest", "14:28:10", "Failed", "192.168.1.100"),
+            ("admin", "14:25:05", "Success", "127.0.0.1"),
+            ("unknown", "14:20:30", "Failed", "192.168.1.200")
+        ]
+        
+        for user, time, result, ip in auth_data:
+            auth_item = self.create_auth_item(user, time, result, ip)
+            auth_list_layout.addWidget(auth_item)
+        
+        layout.addWidget(auth_list)
+        
+        return widget
+    
+    def create_auth_item(self, user, time, result, ip):
+        """Créer un élément d'authentification"""
+        item = QFrame()
+        item.setFixedHeight(28)  # Augmenté de 20 à 28
+        item.setStyleSheet("""
+            QFrame {
+                background-color: transparent;
+                border: none;
+                margin: 2px;
+                padding: 2px;
+            }
+        """)
+        
+        layout = QHBoxLayout(item)
+        layout.setContentsMargins(5, 2, 5, 2)
+        layout.setSpacing(8)
+        
+        # Icône de résultat
+        icon = "✅" if result == "Success" else "❌"
+        icon_label = QLabel(icon)
+        icon_label.setFixedWidth(20)
+        icon_label.setStyleSheet("font-size: 10px;")
+        layout.addWidget(icon_label)
+        
+        # Timestamp
+        time_label = QLabel(time)
+        time_label.setFixedWidth(60)
+        time_label.setStyleSheet("font-size: 11px; color: #666; font-weight: bold;")  # Augmenté à 11px
+        layout.addWidget(time_label)
+        
+        # Utilisateur
+        user_label = QLabel(user)
+        user_label.setFixedWidth(80)
+        user_label.setStyleSheet("font-size: 11px; color: #333; font-weight: bold;")  # Augmenté à 11px
+        layout.addWidget(user_label)
+        
+        # IP
+        ip_label = QLabel(ip)
+        ip_label.setFixedWidth(100)
+        ip_label.setStyleSheet("font-size: 11px; color: #888;")  # Augmenté à 11px
+        layout.addWidget(ip_label)
+        
+        # Résultat
+        result_color = "#4caf50" if result == "Success" else "#f44336"
+        result_label = QLabel(result)
+        result_label.setStyleSheet(f"font-size: 11px; color: {result_color}; font-weight: bold;")  # Augmenté à 11px
+        layout.addWidget(result_label)
         
         layout.addStretch()
         
-        # Auto-refresh checkbox
-        auto_refresh = QCheckBox("Auto-refresh")
-        auto_refresh.setChecked(True)
-        auto_refresh.setStyleSheet("""
-            color: #495057;
-            font-size: 13px;
-            spacing: 8px;
-        """)
-        layout.addWidget(auto_refresh)
-        
-        return filter_bar
+        return item
     
-    def create_log_config_section(self):
-        """Créer la section Configuration des Logs"""
-        section = QFrame()
-        section.setObjectName("logging-section")
-        section.setFixedHeight(200)  # Hauteur fixe
-        section.setStyleSheet("""
-            #logging-section {
-                background: white;
-                border-radius: 12px;
-                border: 1px solid #e3e8ee;
-                margin: 0px;
+    def create_system_alerts_widget(self):
+        """Créer un widget d'alertes système"""
+        widget = QFrame()
+        widget.setStyleSheet("""
+            QFrame {
+                background-color: #fff3e0;
+                border-left: 4px solid #ff9800;
+                border-radius: 8px;
+                margin: 2px 0px;
+                padding: 10px;
             }
         """)
         
-        layout = QVBoxLayout(section)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(15, 10, 15, 10)
+        layout.setSpacing(10)
         
-        # Header
-        header = QFrame()
-        header.setStyleSheet("""
-            background: qlineargradient(
-                x1: 0, y1: 0, x2: 0, y2: 1,
-                stop: 0 #f8f9fa,
-                stop: 1 #e9ecef
-            );
-            border-top-left-radius: 12px;
-            border-top-right-radius: 12px;
-            border-bottom: 1px solid #dee2e6;
+        # En-tête avec compteur d'alertes
+        header_layout = QHBoxLayout()
+        
+        alerts_title = QLabel("🚨 Active System Alerts")
+        alerts_title.setStyleSheet("""
+            color: #e65100;
+            font-weight: bold;
+            font-size: 14px;
+            background-color: transparent;
+            border: none;
         """)
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(20, 15, 20, 15)
-        
-        # Icône et titre
-        icon_label = QLabel("⚙️")
-        icon_label.setStyleSheet("font-size: 20px; margin-right: 8px;")
-        header_layout.addWidget(icon_label)
-        
-        title_label = QLabel("Log Configuration")
-        title_label.setStyleSheet("""
-            font-size: 18px;
-            font-weight: 600;
-            color: #34495e;
-            margin: 0px;
-        """)
-        header_layout.addWidget(title_label)
+        header_layout.addWidget(alerts_title)
         header_layout.addStretch()
         
+        # Compteur d'alertes
+        alert_count = QLabel("3 Active")
+        alert_count.setStyleSheet("""
+            background-color: #ff9800;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        """)
+        header_layout.addWidget(alert_count)
+        
+        layout.addLayout(header_layout)
+        
+        # Liste des alertes actives
+        alerts_container = QFrame()
+        alerts_container.setStyleSheet("""
+            background-color: #ffffff;
+            border: 1px solid #ffcc02;
+            border-radius: 4px;
+            padding: 5px;
+        """)
+        alerts_container.setFixedHeight(150)  # Ajout d'une hauteur fixe
+        
+        alerts_layout = QVBoxLayout(alerts_container)
+        alerts_layout.setContentsMargins(8, 5, 8, 5)
+        alerts_layout.setSpacing(5)
+        
+        # Alertes d'exemple
+        alerts_data = [
+            ("High", "⚠️", "Storage usage exceeded 75%", "2 min ago"),
+            ("Medium", "🔍", "AI Detection: 3 consecutive failures", "5 min ago"),
+            ("Low", "🔐", "Multiple failed login attempts detected", "10 min ago")
+        ]
+        
+        for severity, icon, message, time in alerts_data:
+            alert_item = self.create_alert_item(severity, icon, message, time)
+            alerts_layout.addWidget(alert_item)
+        
+        layout.addWidget(alerts_container)
+        
+        return widget
+    
+    def create_alert_item(self, severity, icon, message, time):
+        """Créer un élément d'alerte"""
+        item = QFrame()
+        item.setFixedHeight(35)  # Augmenté de 30 à 35
+        
+        severity_colors = {
+            "High": "#f44336",
+            "Medium": "#ff9800", 
+            "Low": "#2196F3"
+        }
+        
+        item.setStyleSheet(f"""
+            QFrame {{
+                background-color: #fafafa;
+                border-left: 3px solid {severity_colors.get(severity, "#ccc")};
+                border-radius: 3px;
+                margin: 2px;
+                padding: 2px;
+            }}
+        """)
+        
+        layout = QHBoxLayout(item)
+        layout.setContentsMargins(8, 5, 8, 5)
+        layout.setSpacing(8)
+        
+        # Icône d'alerte
+        icon_label = QLabel(icon)
+        icon_label.setFixedWidth(20)
+        icon_label.setStyleSheet("font-size: 12px;")
+        layout.addWidget(icon_label)
+        
+        # Message d'alerte
+        message_label = QLabel(message)
+        message_label.setStyleSheet("font-size: 12px; color: #333; font-weight: 500;")  # Augmenté à 12px
+        layout.addWidget(message_label)
+        
+        layout.addStretch()
+        
+        # Timestamp
+        time_label = QLabel(time)
+        time_label.setStyleSheet("font-size: 11px; color: #888;")  # Augmenté à 11px
+        layout.addWidget(time_label)
+        
+        # Badge de sévérité
+        severity_badge = QLabel(severity)
+        severity_badge.setStyleSheet(f"""
+            background-color: {severity_colors.get(severity, "#ccc")};
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 9px;
+            font-weight: bold;
+            min-width: 35px;
+            text-align: center;
+        """)
+        severity_badge.setAlignment(Qt.AlignCenter)
+        layout.addWidget(severity_badge)
+        
+        return item
+    
+    def show_service_details(self, service_name, status, details):
+        """Afficher les détails d'un service avec ses logs"""
+        from PyQt5.QtWidgets import QDialog, QTextEdit
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{service_name} - Details")
+        dialog.setFixedSize(600, 400)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #f5f5f5;
+            }
+        """)
+        
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        # En-tête du service
+        header = QLabel(f"🔍 {service_name} - {status}")
+        header.setStyleSheet("""
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            padding: 10px;
+            background-color: #e3f2fd;
+            border-radius: 8px;
+            border-left: 4px solid #2196F3;
+        """)
         layout.addWidget(header)
         
-        # Contenu de configuration
-        content = QWidget()
-        content.setStyleSheet("background: white; padding: 20px;")
-        content_layout = QGridLayout(content)
-        content_layout.setSpacing(15)
-        
-        # Log Level
-        content_layout.addWidget(QLabel("Log Level:"), 0, 0)
-        level_input = QLineEdit("INFO")
-        level_input.setStyleSheet("""
-            background: white;
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            padding: 8px 12px;
+        # Détails du problème
+        details_label = QLabel(f"Issue: {details}")
+        details_label.setStyleSheet("""
             font-size: 14px;
+            color: #666;
+            padding: 8px;
         """)
-        level_input.setReadOnly(True)
-        content_layout.addWidget(level_input, 0, 1)
+        layout.addWidget(details_label)
         
-        # Retention
-        content_layout.addWidget(QLabel("Retention (days):"), 1, 0)
-        retention_input = QLineEdit("30")
-        retention_input.setStyleSheet("""
-            background: white;
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 14px;
+        # Zone de logs spécifiques
+        logs_area = QTextEdit()
+        logs_area.setReadOnly(True)
+        logs_area.setStyleSheet("""
+            QTextEdit {
+                background-color: #ffffff;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                font-family: 'Courier New', monospace;
+                font-size: 11px;
+                color: #333;
+                padding: 10px;
+            }
         """)
-        retention_input.setReadOnly(True)
-        content_layout.addWidget(retention_input, 1, 1)
         
-        # Store to Database
-        content_layout.addWidget(QLabel("Store to Database:"), 2, 0)
-        store_checkbox = QCheckBox()
-        store_checkbox.setChecked(True)
-        store_checkbox.setEnabled(False)
-        content_layout.addWidget(store_checkbox, 2, 1)
-        
-        layout.addWidget(content, 1)
-        
-        return section
-    
-    def get_status_icon(self, status):
-        """Retourne l'icône appropriée selon le statut"""
-        status_icons = {
-            "operational": "✅",
-            "warning": "⚠️",
-            "error": "❌",
-            "checking": "🔄"
+        # Logs d'exemple selon le service
+        sample_logs = {
+            "AI Detection": """[14:30:15] ERROR - YOLO model prediction failed
+[14:29:45] ERROR - Input tensor shape mismatch
+[14:29:20] ERROR - GPU memory allocation failed
+[14:28:55] WARN - Falling back to CPU processing
+[14:28:30] INFO - Detection service restarted""",
+            
+            "User Authentication": """[14:32:10] WARN - Failed login attempt for user 'admin' from 192.168.1.100
+[14:31:45] WARN - Failed login attempt for user 'guest' from 192.168.1.100  
+[14:31:20] WARN - Failed login attempt for user 'operator' from 192.168.1.100
+[14:30:55] ERROR - IP 192.168.1.100 temporarily blocked (too many failures)
+[14:30:30] INFO - Security notification sent to administrators""",
+            
+            "Network Service": """[14:35:20] ERROR - Connection timeout to camera 192.168.1.55
+[14:35:00] ERROR - Network interface eth0 packet loss 15%
+[14:34:30] WARN - High latency detected (>500ms)
+[14:34:00] ERROR - DHCP server unreachable
+[14:33:30] INFO - Attempting network diagnostics..."""
         }
-        return status_icons.get(status.lower(), "❓")
+        
+        logs_content = sample_logs.get(service_name, f"[14:32:15] INFO - {service_name} logs\n[14:32:10] WARN - {details}")
+        logs_area.setPlainText(logs_content)
+        layout.addWidget(logs_area)
+        
+        # Boutons d'action
+        buttons_layout = QHBoxLayout()
+        
+        export_btn = QPushButton("📤 Export Logs")
+        export_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: 500;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        buttons_layout.addWidget(export_btn)
+        
+        restart_btn = QPushButton("🔄 Restart Service") 
+        restart_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff9800;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: 500;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #f57c00;
+            }
+        """)
+        buttons_layout.addWidget(restart_btn)
+        
+        close_btn = QPushButton("✖️ Close")
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #666;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: 500;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #555;
+            }
+        """)
+        close_btn.clicked.connect(dialog.close)
+        buttons_layout.addWidget(close_btn)
+        
+        buttons_layout.addStretch()
+        layout.addLayout(buttons_layout)
+        
+        dialog.exec_()
     
-    def refresh_services_status(self):
-        """Rafraîchir le statut des services"""
-        # Mettre à jour le label de dernière vérification
-        import datetime
-        current_time = datetime.datetime.now().strftime("%H:%M:%S")
-        self.services_last_check_label.setText(f"Last check: {current_time}")
+    def create_simple_log_widget(self):
+        """Créer un widget de logs simple"""
+        widget = QFrame()
+        widget.setStyleSheet("""
+            QFrame {
+                background-color: #e3f2fd;
+                border-left: 4px solid #2196F3;
+                border-radius: 8px;
+                margin: 2px 0px;
+                padding: 10px;
+            }
+        """)
         
-        # Simuler une vérification (à remplacer par la vraie logique)
-        self.services_status_label.setText("🟢 6/6 services operational • All systems running")
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(15, 10, 15, 10)
+        layout.setSpacing(8)
         
-        print(f"[Settings] Services status refreshed at {current_time}")
-
+        # En-tête avec bouton refresh
+        header_layout = QHBoxLayout()
+        
+        logs_title = QLabel("Recent System Logs")
+        logs_title.setStyleSheet("""
+            color: #1565C0;
+            font-weight: bold;
+            font-size: 14px;
+            background-color: transparent;
+            border: none;
+        """)
+        header_layout.addWidget(logs_title)
+        header_layout.addStretch()
+        
+        refresh_btn = QPushButton("🔄")
+        refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-weight: 500;
+                font-size: 12px;
+                min-width: 30px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        refresh_btn.setToolTip("Refresh logs")
+        header_layout.addWidget(refresh_btn)
+        
+        layout.addLayout(header_layout)
+        
+        # Zone de logs
+        logs_area = QTextEdit()
+        logs_area.setFixedHeight(120)
+        logs_area.setReadOnly(True)
+        logs_area.setStyleSheet("""
+            QTextEdit {
+                background-color: #ffffff;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                font-family: 'Courier New', monospace;
+                font-size: 11px;
+                color: #333;
+                padding: 5px;
+            }
+        """)
+        
+        # Ajouter des logs d'exemple
+        sample_logs = """[14:32:15] INFO - Camera service started successfully
+[14:32:10] INFO - 6 cameras connected and operational
+[14:31:45] WARN - Storage usage at 75%
+[14:31:30] INFO - AI detection processing normally
+[14:31:15] INFO - Database connection established"""
+        
+        logs_area.setPlainText(sample_logs)
+        layout.addWidget(logs_area)
+        
+        return widget
+    
+    def create_simple_actions_widget(self):
+        """Créer un widget d'actions simples"""
+        widget = QFrame()
+        widget.setStyleSheet("""
+            QFrame {
+                background-color: #e3f2fd;
+                border-left: 4px solid #2196F3;
+                border-radius: 8px;
+                margin: 2px 0px;
+                padding: 10px;
+            }
+        """)
+        
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(15, 10, 15, 10)
+        layout.setSpacing(10)
+        
+        # Titre
+        actions_title = QLabel("System Actions")
+        actions_title.setStyleSheet("""
+            color: #1565C0;
+            font-weight: bold;
+            font-size: 14px;
+            background-color: transparent;
+            border: none;
+        """)
+        layout.addWidget(actions_title)
+        
+        # Boutons d'actions
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(10)
+        
+        # Export logs
+        export_btn = QPushButton("📤 Export Logs")
+        export_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: 500;
+                font-size: 12px;
+                min-width: 100px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        buttons_layout.addWidget(export_btn)
+        
+        # Clear logs
+        clear_btn = QPushButton("🗑️ Clear Logs")
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff9800;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: 500;
+                font-size: 12px;
+                min-width: 100px;
+            }
+            QPushButton:hover {
+                background-color: #f57c00;
+            }
+        """)
+        buttons_layout.addWidget(clear_btn)
+        
+        # Download report
+        report_btn = QPushButton("📊 Generate Report")
+        report_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4caf50;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: 500;
+                font-size: 12px;
+                min-width: 100px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        buttons_layout.addWidget(report_btn)
+        
+        buttons_layout.addStretch()
+        layout.addLayout(buttons_layout)
+        
+        return widget
 
     def create_form_field(self, label_text, icon_name=None, tooltip=None):
         """Create a form field with label and optional icon with modern styling"""
@@ -1803,8 +2083,7 @@ class SettingsScreen(QWidget):
         label.setStyleSheet("color: #333333 ; font-weight: bold; font-size: 14px;")
         label.setProperty("class", "fieldLabel")
         label_layout.addWidget(label)
-    
-            
+
         label_layout.addStretch()
         layout.addLayout(label_layout)
         
@@ -3786,3 +4065,257 @@ class SettingsScreen(QWidget):
             logger = logging.getLogger(__name__)
             logger.error(f"Error in camera removal: {e}")
             QMessageBox.critical(self, "Error", f"Unexpected error: {e}")
+    
+    def closeEvent(self, event):
+        """Méthode appelée quand la fenêtre se ferme - nettoyer les timers"""
+        try:
+            # Arrêter le timer de mise à jour des services
+            if hasattr(self, 'service_update_timer') and self.service_update_timer:
+                self.service_update_timer.stop()
+                print("[Settings] Service update timer stopped")
+            
+            # Fermer les sessions de base de données
+            if hasattr(self, 'user_service') and self.user_service:
+                try:
+                    self.user_service.session.close()
+                except:
+                    pass
+                    
+            if hasattr(self, 'camera_service') and self.camera_service:
+                try:
+                    self.camera_service.session.close()
+                except:
+                    pass
+            
+            print("[Settings] Cleanup completed")
+            
+        except Exception as e:
+            print(f"[Settings] Error during cleanup: {e}")
+        
+        # Appeler la méthode parent
+        super().closeEvent(event)
+    
+    def create_realtime_log_widget(self):
+        """Créer un widget de logs en temps réel utilisant le realtime_log_handler"""
+        widget = QFrame()
+        widget.setStyleSheet("""
+            QFrame {
+                background-color: #e8f5e8;
+                border-left: 4px solid #4caf50;
+                border-radius: 8px;
+                margin: 2px 0px;
+                padding: 10px;
+            }
+        """)
+        
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(15, 10, 15, 10)
+        layout.setSpacing(10)
+        
+        # En-tête avec indicateur live
+        header_layout = QHBoxLayout()
+        
+        logs_title = QLabel("🔴 Live System Logs")
+        logs_title.setStyleSheet("""
+            color: #2e7d32;
+            font-weight: bold;
+            font-size: 14px;
+            background-color: transparent;
+            border: none;
+        """)
+        header_layout.addWidget(logs_title)
+        header_layout.addStretch()
+        
+        # Contrôles
+        controls_layout = QHBoxLayout()
+        controls_layout.setSpacing(8)
+        
+        # Niveau de log filter
+        level_filter = QComboBox()
+        level_filter.addItems(["ALL", "DEBUG", "INFO", "WARN", "ERROR"])
+        level_filter.setCurrentText("INFO")
+        level_filter.setStyleSheet("""
+            QComboBox {
+                background-color: #ffffff;
+                border: 1px solid #4caf50;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 11px;
+                min-width: 60px;
+                max-width: 80px;
+            }
+        """)
+        controls_layout.addWidget(level_filter)
+        
+        # Bouton pause/play
+        self.realtime_pause_btn = QPushButton("⏸️")
+        self.realtime_pause_btn.setCheckable(True)
+        self.realtime_pause_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4caf50;
+                color: white;
+                border: none;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 12px;
+                min-width: 30px;
+                max-width: 40px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:checked {
+                background-color: #ff9800;
+            }
+        """)
+        self.realtime_pause_btn.setToolTip("Pause/Resume live logs")
+        self.realtime_pause_btn.clicked.connect(self.toggle_realtime_logs)
+        controls_layout.addWidget(self.realtime_pause_btn)
+        
+        # Clear button
+        clear_btn = QPushButton("🗑️")
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 12px;
+                min-width: 30px;
+                max-width: 40px;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+        """)
+        clear_btn.setToolTip("Clear logs")
+        clear_btn.clicked.connect(self.clear_realtime_logs)
+        controls_layout.addWidget(clear_btn)
+        
+        header_layout.addLayout(controls_layout)
+        layout.addLayout(header_layout)
+        
+        # Zone d'affichage des logs en temps réel
+        self.realtime_logs_area = QTextEdit()
+        self.realtime_logs_area.setReadOnly(True)
+        self.realtime_logs_area.setFixedHeight(200)  # Hauteur plus importante
+        self.realtime_logs_area.setStyleSheet("""
+            QTextEdit {
+                background-color: #ffffff;
+                border: 1px solid #4caf50;
+                border-radius: 4px;
+                font-family: 'Courier New', monospace;
+                font-size: 11px;
+                color: #333;
+                padding: 8px;
+            }
+        """)
+        
+        # Se connecter au service de logs en temps réel
+        self.connect_to_realtime_logs()
+        
+        layout.addWidget(self.realtime_logs_area)
+        
+        return widget
+    
+    def connect_to_realtime_logs(self):
+        """Connecter au service de logs en temps réel"""
+        try:
+            # Se connecter au log_manager pour recevoir les logs en temps réel
+            if hasattr(log_manager, 'new_log_signal'):
+                log_manager.new_log_signal.connect(self.on_new_realtime_log)
+                print("[Settings] Connected to realtime log handler")
+            else:
+                print("[Settings] Log manager doesn't have new_log_signal")
+                
+            # Charger les logs récents existants
+            self.load_recent_logs()
+            
+        except Exception as e:
+            print(f"[Settings] Error connecting to realtime logs: {e}")
+            # Afficher un message d'erreur dans la zone de logs
+            if hasattr(self, 'realtime_logs_area'):
+                self.realtime_logs_area.setPlainText(
+                    "[ERROR] Unable to connect to real-time log service.\n"
+                    "Check if the logging service is running."
+                )
+    
+    def load_recent_logs(self):
+        """Charger les logs récents depuis le service"""
+        try:
+            # Obtenir les logs récents depuis le log_manager
+            if hasattr(log_manager, 'get_recent_logs'):
+                recent_logs = log_manager.get_recent_logs(limit=50)
+                if recent_logs:
+                    log_text = "\n".join([
+                        f"[{log.get('timestamp', 'N/A')}] {log.get('level', 'INFO')} - {log.get('message', '')}"
+                        for log in recent_logs[-20:]  # Derniers 20 logs
+                    ])
+                    self.realtime_logs_area.setPlainText(log_text)
+                    # Scroller vers le bas
+                    self.realtime_logs_area.moveCursor(self.realtime_logs_area.textCursor().End)
+                else:
+                    self.realtime_logs_area.setPlainText("[INFO] Waiting for real-time logs...")
+            else:
+                # Si pas de méthode get_recent_logs, afficher des logs d'exemple
+                sample_logs = f"""[{QDateTime.currentDateTime().toString('hh:mm:ss')}] INFO - Settings screen initialized
+[{QDateTime.currentDateTime().addSecs(-30).toString('hh:mm:ss')}] INFO - User authentication successful
+[{QDateTime.currentDateTime().addSecs(-60).toString('hh:mm:ss')}] INFO - Camera service started
+[{QDateTime.currentDateTime().addSecs(-90).toString('hh:mm:ss')}] WARN - High storage usage detected
+[{QDateTime.currentDateTime().addSecs(-120).toString('hh:mm:ss')}] INFO - Database connection established"""
+                
+                self.realtime_logs_area.setPlainText(sample_logs)
+                
+        except Exception as e:
+            print(f"[Settings] Error loading recent logs: {e}")
+            if hasattr(self, 'realtime_logs_area'):
+                self.realtime_logs_area.setPlainText(f"[ERROR] Failed to load recent logs: {str(e)}")
+    
+    def on_new_realtime_log(self, log_entry):
+        """Traiter un nouveau log en temps réel"""
+        try:
+            if hasattr(self, 'realtime_pause_btn') and self.realtime_pause_btn.isChecked():
+                return  # Logs en pause
+                
+            # Formatter le log
+            timestamp = log_entry.get('timestamp', QDateTime.currentDateTime().toString('hh:mm:ss'))
+            level = log_entry.get('level', 'INFO')
+            message = log_entry.get('message', 'No message')
+            
+            formatted_log = f"[{timestamp}] {level} - {message}"
+            
+            # Ajouter à la zone de texte
+            if hasattr(self, 'realtime_logs_area'):
+                current_text = self.realtime_logs_area.toPlainText()
+                lines = current_text.split('\n')
+                
+                # Garder seulement les 100 dernières lignes
+                if len(lines) > 100:
+                    lines = lines[-99:]  # Garder 99 + 1 nouvelle = 100
+                
+                lines.append(formatted_log)
+                
+                self.realtime_logs_area.setPlainText('\n'.join(lines))
+                
+                # Scroller vers le bas
+                self.realtime_logs_area.moveCursor(self.realtime_logs_area.textCursor().End)
+            
+        except Exception as e:
+            print(f"[Settings] Error processing realtime log: {e}")
+    
+    def toggle_realtime_logs(self):
+        """Basculer la pause/reprise des logs en temps réel"""
+        if hasattr(self, 'realtime_pause_btn'):
+            if self.realtime_pause_btn.isChecked():
+                self.realtime_pause_btn.setText("▶️")
+                self.realtime_pause_btn.setToolTip("Resume live logs")
+            else:
+                self.realtime_pause_btn.setText("⏸️")
+                self.realtime_pause_btn.setToolTip("Pause live logs")
+    
+    def clear_realtime_logs(self):
+        """Effacer les logs en temps réel"""
+        if hasattr(self, 'realtime_logs_area'):
+            self.realtime_logs_area.clear()
+            self.realtime_logs_area.setPlainText("[INFO] Logs cleared - waiting for new entries...")
